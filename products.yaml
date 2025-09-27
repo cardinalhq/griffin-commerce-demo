@@ -1,0 +1,42 @@
+products:
+  - id: PROD-001
+    name: Premium Dog Food
+    description: Nutritious and delicious food for your best friend
+    price: 29.99
+    stock: 50
+    category: Food
+
+  - id: PROD-002
+    name: Squeaky Rope Toy
+    description: Durable rope toy that your dog will love
+    price: 12.99
+    stock: 100
+    category: Toys
+
+  - id: PROD-003
+    name: Cozy Dog Bed
+    description: Comfortable bed for peaceful sleep
+    price: 45.99
+    stock: 25
+    category: Accessories
+
+  - id: PROD-004
+    name: Dog Collar - Blue
+    description: Adjustable collar with safety buckle
+    price: 15.99
+    stock: 75
+    category: Accessories
+
+  - id: PROD-005
+    name: Tennis Ball Set (3-pack)
+    description: Classic tennis balls for fetch
+    price: 8.99
+    stock: 200
+    category: Toys
+
+  - id: PROD-006
+    name: Dog Shampoo
+    description: Gentle formula for sensitive skin
+    price: 18.99
+    stock: 40
+    category: Grooming

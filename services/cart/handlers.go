@@ -13,12 +13,12 @@ import (
 // RegisterRoutes registers all HTTP routes
 func RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/health", HealthHandler).Methods("GET")
-	r.HandleFunc("/api/cart/create", CreateCartHandler).Methods("POST")
-	r.HandleFunc("/api/cart/{id}", GetCartHandler).Methods("GET")
-	r.HandleFunc("/api/cart/{id}/add", AddItemHandler).Methods("POST")
-	r.HandleFunc("/api/cart/{id}/item/{productId}", RemoveItemHandler).Methods("DELETE")
-	r.HandleFunc("/api/cart/{id}/clear", ClearCartHandler).Methods("DELETE")
-	r.HandleFunc("/api/cart/{id}/checkout", CheckoutHandler).Methods("POST")
+	r.HandleFunc("/api/cart/create", CreateCartHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/cart/{id}", GetCartHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/cart/{id}/add", AddItemHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/cart/{id}/item/{productId}", RemoveItemHandler).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/api/cart/{id}/clear", ClearCartHandler).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/api/cart/{id}/checkout", CheckoutHandler).Methods("POST", "OPTIONS")
 }
 
 // HealthHandler returns service health status

@@ -1,6 +1,7 @@
 ---
 name: system-design-architect
-description: Use this agent when you need to design software systems and create detailed implementation plans without writing any actual code. This agent reads requirements from context files and produces comprehensive design documentation that others can follow to build the system. Perfect for architecture planning, system design reviews, and creating implementation roadmaps. model: sonnet
+description: Use this agent when you need to design software systems and create detailed implementation plans without writing any actual code. This agent reads requirements from context files and produces comprehensive design documentation that others can follow to build the system. Perfect for architecture planning, system design reviews, and creating implementation roadmaps.
+model: sonnet
 color: cyan
 ---
 
