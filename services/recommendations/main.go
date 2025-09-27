@@ -1,4 +1,4 @@
-package main
+package recommendations
 
 import (
 	"encoding/json"
@@ -22,7 +22,7 @@ var (
 	catalogClient     *http.Client
 )
 
-func main() {
+func Start() error {
 	shutdown, err := common.InitTelemetry("recommendations-service")
 	if err != nil {
 		log.Printf("Failed to initialize telemetry: %v", err)
@@ -65,8 +65,10 @@ func main() {
 	}
 
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+		return fmt.Errorf("server failed to start: %w", err)
 	}
+
+	return nil
 }
 
 func getPort() int {

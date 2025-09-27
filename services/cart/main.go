@@ -1,4 +1,4 @@
-package main
+package cart
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"github.com/cardinalhq/griffin-commerce-demo/common"
 )
 
-func main() {
+func Start() error {
 	// Initialize telemetry
 	shutdown, err := common.InitTelemetry("cart-service")
 	if err != nil {
@@ -51,8 +51,10 @@ func main() {
 	}
 
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+		return fmt.Errorf("server failed to start: %w", err)
 	}
+
+	return nil
 }
 
 func getPort() int {

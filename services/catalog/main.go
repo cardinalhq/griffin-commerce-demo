@@ -1,4 +1,4 @@
-package main
+package catalog
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"github.com/cardinalhq/griffin-commerce-demo/common"
 )
 
-func main() {
+func Start() error {
 	// Initialize telemetry
 	shutdown, err := common.InitTelemetry("catalog-service")
 	if err != nil {
@@ -20,7 +20,7 @@ func main() {
 
 	// Load products from YAML
 	if err := LoadProducts("products.yaml"); err != nil {
-		log.Fatalf("Failed to load products: %v", err)
+		return fmt.Errorf("failed to load products: %w", err)
 	}
 	log.Printf("Loaded %d products", GetProductCount())
 
@@ -46,8 +46,10 @@ func main() {
 	}
 
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+		return fmt.Errorf("server failed to start: %w", err)
 	}
+
+	return nil
 }
 
 func getPort() int {
