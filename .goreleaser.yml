@@ -24,9 +24,11 @@ builds:
       - -X main.date={{.Date}}
 
 archives:
-  # Skip archives, we only need the binaries for Docker
-  - format: binary
-    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}"
+  - id: griffin-archive
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    files:
+      - none*  # This will only include the binary
 
 dockers:
   - image_templates:
