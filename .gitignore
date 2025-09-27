@@ -13,6 +13,7 @@ bin/
 
 # Output of the go coverage tool
 *.out
+.playwright-mcp
 
 # Go workspace files
 go.work
@@ -35,4 +36,6 @@ Thumbs.db
 # Environment files
 .env
 .env.local
-.playwright-mcp
+
+# go-releaser
+dist/
