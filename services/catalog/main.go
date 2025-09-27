@@ -53,7 +53,10 @@ func main() {
 func getPort() int {
 	if port := os.Getenv("PORT"); port != "" {
 		var p int
-		fmt.Sscanf(port, "%d", &p)
+		if _, err := fmt.Sscanf(port, "%d", &p); err != nil {
+			log.Printf("Failed to parse PORT env var '%s': %v, using default", port, err)
+			return 8080
+		}
 		return p
 	}
 	return 8080

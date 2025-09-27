@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -26,13 +27,17 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Version:   "1.0.0",
 		Timestamp: time.Now(),
 	}
-	common.WriteJSONResponse(w, health, http.StatusOK)
+	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
+		slog.Error("Failed to write health response", "error", err)
+	}
 }
 
 // GetProductsHandler returns all products
 func GetProductsHandler(w http.ResponseWriter, r *http.Request) {
 	products := GetAllProducts()
-	common.WriteJSONResponse(w, products, http.StatusOK)
+	if err := common.WriteJSONResponse(w, products, http.StatusOK); err != nil {
+		slog.Error("Failed to write products response", "error", err)
+	}
 }
 
 // GetProductHandler returns a single product
@@ -47,7 +52,9 @@ func GetProductHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	common.WriteJSONResponse(w, product, http.StatusOK)
+	if err := common.WriteJSONResponse(w, product, http.StatusOK); err != nil {
+		slog.Error("Failed to write product response", "error", err)
+	}
 }
 
 // StockRequest represents a stock reservation/release request
@@ -95,7 +102,9 @@ func ReserveStockHandler(w http.ResponseWriter, r *http.Request) {
 		Message:   "Stock reserved successfully",
 	}
 
-	common.WriteJSONResponse(w, response, http.StatusOK)
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }
 
 // ReleaseStockHandler releases reserved stock
@@ -131,5 +140,7 @@ func ReleaseStockHandler(w http.ResponseWriter, r *http.Request) {
 		Message:   "Stock released successfully",
 	}
 
-	common.WriteJSONResponse(w, response, http.StatusOK)
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }

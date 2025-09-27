@@ -37,7 +37,9 @@ func TestHealthHandler(t *testing.T) {
 
 func TestChargeHandler(t *testing.T) {
 	InitTransactionStorage()
-	LoadProcessorConfig("config.yaml")
+	if err := LoadProcessorConfig("config.yaml"); err != nil {
+		t.Logf("Warning: Failed to load config: %v", err)
+	}
 
 	chargeReq := ChargeRequest{
 		OrderID:   "test-order-123",
@@ -117,7 +119,9 @@ func TestChargeHandlerInvalidRequest(t *testing.T) {
 
 func TestGetTransactionHandler(t *testing.T) {
 	InitTransactionStorage()
-	LoadProcessorConfig("config.yaml")
+	if err := LoadProcessorConfig("config.yaml"); err != nil {
+		t.Logf("Warning: Failed to load config: %v", err)
+	}
 
 	transaction, _ := ProcessPayment("order-123", 75.50, "kittycard")
 	transactionID := transaction.ID

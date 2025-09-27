@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -145,6 +146,10 @@ func updateCartTotalAndSave(cart *common.Cart) error {
 // generateCartID generates a unique cart ID
 func generateCartID() string {
 	bytes := make([]byte, 8)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to timestamp-based ID
+		slog.Error("Failed to generate random cart ID", "error", err)
+		return fmt.Sprintf("CART-%d", time.Now().UnixNano())
+	}
 	return "CART-" + hex.EncodeToString(bytes)
 }

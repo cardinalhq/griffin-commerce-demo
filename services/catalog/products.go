@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 
@@ -29,7 +30,11 @@ func LoadProducts(path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open products file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Warn("Failed to close products file", "error", err)
+		}
+	}()
 
 	var config ProductsConfig
 	decoder := yaml.NewDecoder(file)

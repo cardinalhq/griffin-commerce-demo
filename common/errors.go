@@ -2,6 +2,7 @@ package common
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 )
 
@@ -41,7 +42,9 @@ func WriteErrorResponse(w http.ResponseWriter, err AppError, statusCode int, cor
 		CorrelationID: correlationID,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		slog.Error("Failed to encode error response", "error", err)
+	}
 }
 
 // WriteJSONResponse writes a JSON response

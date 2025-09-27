@@ -50,7 +50,9 @@ func TestWriteJSONResponse(t *testing.T) {
 	rec := httptest.NewRecorder()
 	data := map[string]string{"test": "value"}
 
-	WriteJSONResponse(rec, data, 200)
+	if err := WriteJSONResponse(rec, data, 200); err != nil {
+		t.Fatalf("Failed to write JSON response: %v", err)
+	}
 
 	if rec.Code != 200 {
 		t.Errorf("Expected status code 200, got %d", rec.Code)

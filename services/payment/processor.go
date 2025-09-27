@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"math"
+	"log/slog"
 	mrand "math/rand"
 	"os"
 	"time"
@@ -43,7 +43,11 @@ func LoadProcessorConfig(path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open config file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Warn("Failed to close config file", "error", err)
+		}
+	}()
 
 	var config ProcessorsConfig
 	decoder := yaml.NewDecoder(file)
@@ -125,7 +129,11 @@ func shouldFail(failureRate float64) bool {
 // generateTransactionID generates a unique transaction ID
 func generateTransactionID() string {
 	bytes := make([]byte, 8)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to timestamp-based ID
+		slog.Error("Failed to generate random transaction ID", "error", err)
+		return fmt.Sprintf("TXN-%d", time.Now().UnixNano())
+	}
 	return "TXN-" + hex.EncodeToString(bytes)
 }
 
@@ -140,9 +148,4 @@ func getFailureMessage() string {
 		"Processor unavailable",
 	}
 	return messages[random.Intn(len(messages))]
-}
-
-// roundToTwoDecimals rounds a float to 2 decimal places
-func roundToTwoDecimals(val float64) float64 {
-	return math.Round(val*100) / 100
 }
