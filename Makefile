@@ -1,4 +1,4 @@
-.PHONY: all test check clean catalog payment cart shipping images recommendations
+.PHONY: all test check clean catalog payment cart shipping images recommendations fmt lint install-tools
 
 # Default target
 all: catalog payment cart shipping images recommendations
@@ -52,8 +52,44 @@ test:
 	@echo "Running tests for Recommendations Service..."
 	@cd services/recommendations && go test ./...
 
-# Alias for test
-check: test
+# Run integration tests
+integration-test:
+	@echo "Running integration tests..."
+	@cd integration && go test -v ./...
+
+# Format Go code
+fmt:
+	@echo "Formatting Go code..."
+	@cd common && go fmt ./...
+	@cd services/catalog && go fmt ./...
+	@cd services/payment && go fmt ./...
+	@cd services/cart && go fmt ./...
+	@cd services/shipping && go fmt ./...
+	@cd services/images && go fmt ./...
+	@cd services/recommendations && go fmt ./...
+	@cd integration && go fmt ./...
+
+# Run linter
+lint: $(BIN_DIR)/golangci-lint
+	@echo "Running golangci-lint..."
+	@cd common && ../$(BIN_DIR)/golangci-lint run ./... || true
+	@cd services/catalog && ../../$(BIN_DIR)/golangci-lint run ./... || true
+	@cd services/payment && ../../$(BIN_DIR)/golangci-lint run ./... || true
+	@cd services/cart && ../../$(BIN_DIR)/golangci-lint run ./... || true
+	@cd services/shipping && ../../$(BIN_DIR)/golangci-lint run ./... || true
+	@cd services/images && ../../$(BIN_DIR)/golangci-lint run ./... || true
+	@cd services/recommendations && ../../$(BIN_DIR)/golangci-lint run ./... || true
+	@cd integration && ../$(BIN_DIR)/golangci-lint run ./... || true
+
+# Install development tools
+install-tools: $(BIN_DIR)/golangci-lint
+
+$(BIN_DIR)/golangci-lint: $(BIN_DIR)
+	@echo "Installing golangci-lint..."
+	@GOBIN=$(shell pwd)/$(BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
+
+# Run all checks (formatting, tests, and linting)
+check: fmt test lint
 
 # Clean up binaries
 clean:
@@ -70,7 +106,11 @@ help:
 	@echo "  shipping           - Build Shipping Service"
 	@echo "  images             - Build Image Service"
 	@echo "  recommendations    - Build Recommendations Service"
-	@echo "  test               - Run all tests"
-	@echo "  check              - Alias for test"
+	@echo "  test               - Run all unit tests"
+	@echo "  integration-test   - Run integration tests"
+	@echo "  fmt                - Format all Go code with go fmt"
+	@echo "  lint               - Run golangci-lint on all code"
+	@echo "  check              - Run fmt, test, and lint"
+	@echo "  install-tools      - Install development tools (golangci-lint)"
 	@echo "  clean              - Remove all compiled binaries"
 	@echo "  help               - Show this help message"
