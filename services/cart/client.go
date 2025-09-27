@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	httpClient  *http.Client
+	httpClient     *http.Client
 	catalogBaseURL string
 )
 

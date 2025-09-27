@@ -36,12 +36,12 @@ type ChargeRequest struct {
 
 // ChargeResponse represents a payment charge response
 type ChargeResponse struct {
-	TransactionID string  `json:"transaction_id"`
-	OrderID       string  `json:"order_id"`
-	Amount        float64 `json:"amount"`
-	Status        string  `json:"status"`
-	Processor     string  `json:"processor"`
-	Message       string  `json:"message"`
+	TransactionID string    `json:"transaction_id"`
+	OrderID       string    `json:"order_id"`
+	Amount        float64   `json:"amount"`
+	Status        string    `json:"status"`
+	Processor     string    `json:"processor"`
+	Message       string    `json:"message"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
