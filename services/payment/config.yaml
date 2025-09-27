@@ -1,0 +1,15 @@
+processors:
+  puppypay:
+    name: "PuppyPay"
+    failure_rate: 0.05  # 5% failure rate
+    latency_ms: 100
+
+  kittycard:
+    name: "KittyCard"
+    failure_rate: 0.20  # 20% failure rate (cats are fickle)
+    latency_ms: 150
+
+  doggiecoin:
+    name: "DoggieCoin"
+    failure_rate: 0.10  # 10% failure rate
+    latency_ms: 50      # Fast crypto!

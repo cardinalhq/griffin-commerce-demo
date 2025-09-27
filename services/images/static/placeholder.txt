@@ -1,0 +1,8 @@
+This is a placeholder for image files.
+In a real implementation, this directory would contain actual image files like:
+- rope-toy.jpg
+- bacon-treats.jpg
+- tennis-balls.jpg
+- etc.
+
+For the POC, we're just demonstrating the static file serving capability.
