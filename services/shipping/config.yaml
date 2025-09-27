@@ -1,0 +1,15 @@
+carriers:
+  ponyexpress:
+    name: "Pony Express Ground"
+    rate: 9.99
+    failure_rate: 0.05  # 5% failure rate - very reliable
+
+  avianair:
+    name: "Avian Air Express"
+    rate: 19.99
+    failure_rate: 0.10  # 10% failure rate - birds sometimes get lost
+
+  catcarrier:
+    name: "Cat Carrier Delivery"
+    rate: 14.99
+    failure_rate: 0.25  # 25% failure rate - cats are unpredictable!

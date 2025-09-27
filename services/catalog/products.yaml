@@ -1,0 +1,70 @@
+products:
+  - id: "PROD-001"
+    name: "Premium Rope Toy"
+    price: 15.99
+    stock: 100
+    category: "toys"
+    image_url: "/static/rope-toy.jpg"
+
+  - id: "PROD-002"
+    name: "Bacon Treats - Small Bites"
+    price: 9.99
+    stock: 250
+    category: "treats"
+    image_url: "/static/bacon-treats.jpg"
+
+  - id: "PROD-003"
+    name: "Squeaky Tennis Ball Set"
+    price: 12.99
+    stock: 75
+    category: "toys"
+    image_url: "/static/tennis-balls.jpg"
+
+  - id: "PROD-004"
+    name: "Grain-Free Puppy Food"
+    price: 45.99
+    stock: 50
+    category: "food"
+    image_url: "/static/puppy-food.jpg"
+
+  - id: "PROD-005"
+    name: "Cozy Dog Bed - Large"
+    price: 79.99
+    stock: 20
+    category: "bedding"
+    image_url: "/static/dog-bed.jpg"
+
+  - id: "PROD-006"
+    name: "Dental Chew Sticks"
+    price: 14.99
+    stock: 150
+    category: "treats"
+    image_url: "/static/dental-chews.jpg"
+
+  - id: "PROD-007"
+    name: "Interactive Puzzle Toy"
+    price: 24.99
+    stock: 40
+    category: "toys"
+    image_url: "/static/puzzle-toy.jpg"
+
+  - id: "PROD-008"
+    name: "Organic Peanut Butter Treats"
+    price: 11.99
+    stock: 120
+    category: "treats"
+    image_url: "/static/pb-treats.jpg"
+
+  - id: "PROD-009"
+    name: "Waterproof Dog Collar"
+    price: 19.99
+    stock: 85
+    category: "accessories"
+    image_url: "/static/collar.jpg"
+
+  - id: "PROD-010"
+    name: "Travel Water Bowl"
+    price: 8.99
+    stock: 200
+    category: "accessories"
+    image_url: "/static/water-bowl.jpg"
