@@ -1,7 +1,7 @@
-.PHONY: all test check clean catalog payment cart shipping images-service recommendations fmt lint install-tools images docker-build docker-push
+.PHONY: all build test check clean fmt lint install-tools images docker-build docker-push
 
 # Default target
-all: catalog payment cart shipping images-service recommendations
+all: build
 
 # Output directory for binaries
 BIN_DIR := ./bin
@@ -10,30 +10,10 @@ BIN_DIR := ./bin
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
 
-# Build individual services
-catalog: $(BIN_DIR)
-	@echo "Building Product Catalog Service..."
-	@cd services/catalog && go build -o ../../$(BIN_DIR)/catalog-service .
-
-payment: $(BIN_DIR)
-	@echo "Building Payment Service..."
-	@cd services/payment && go build -o ../../$(BIN_DIR)/payment-service .
-
-cart: $(BIN_DIR)
-	@echo "Building Cart Service..."
-	@cd services/cart && go build -o ../../$(BIN_DIR)/cart-service .
-
-shipping: $(BIN_DIR)
-	@echo "Building Shipping Service..."
-	@cd services/shipping && go build -o ../../$(BIN_DIR)/shipping-service .
-
-images-service: $(BIN_DIR)
-	@echo "Building Image Service..."
-	@cd services/images && go build -o ../../$(BIN_DIR)/images-service .
-
-recommendations: $(BIN_DIR)
-	@echo "Building Recommendations Service..."
-	@cd services/recommendations && go build -o ../../$(BIN_DIR)/recommendations-service .
+# Build the Griffin CLI
+build: $(BIN_DIR)
+	@echo "Building Griffin CLI..."
+	@go build -o $(BIN_DIR)/griffin .
 
 # Run tests
 test:
@@ -99,22 +79,17 @@ clean:
 # Help target
 help:
 	@echo "Griffin Commerce Demo - Makefile targets:"
-	@echo "  all                - Build all services (default)"
-	@echo "  catalog            - Build Product Catalog Service"
-	@echo "  payment            - Build Payment Service"
-	@echo "  cart               - Build Cart Service"
-	@echo "  shipping           - Build Shipping Service"
-	@echo "  images-service     - Build Image Service"
-	@echo "  images             - Build and push Docker images to registry"
-	@echo "  docker-build       - Build Docker image locally"
-	@echo "  docker-push        - Push Docker image to registry"
-	@echo "  recommendations    - Build Recommendations Service"
+	@echo "  all                - Build Griffin CLI (default)"
+	@echo "  build              - Build Griffin CLI binary"
 	@echo "  test               - Run all unit tests"
 	@echo "  integration-test   - Run integration tests"
 	@echo "  fmt                - Format all Go code with go fmt"
 	@echo "  lint               - Run golangci-lint on all code"
 	@echo "  check              - Run fmt, test, and lint"
 	@echo "  install-tools      - Install development tools (golangci-lint)"
+	@echo "  images             - Build and push Docker images to registry"
+	@echo "  docker-build       - Build Docker image locally"
+	@echo "  docker-push        - Push Docker image to registry"
 	@echo "  clean              - Remove all compiled binaries"
 	@echo "  help               - Show this help message"
 
