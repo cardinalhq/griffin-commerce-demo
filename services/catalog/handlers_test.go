@@ -46,7 +46,9 @@ func TestGetProductsHandler(t *testing.T) {
 		{ID: "test2", Name: "Test Product 2", Price: 20.00, Stock: 50},
 	}
 	for _, p := range testProducts {
-		productDB.Set(p.ID, p)
+		if err := productDB.Set(p.ID, p); err != nil {
+			t.Fatalf("Failed to set product: %v", err)
+		}
 	}
 
 	req := httptest.NewRequest("GET", "/api/products", nil)
@@ -76,7 +78,9 @@ func TestGetProductHandler(t *testing.T) {
 		Price: 15.99,
 		Stock: 75,
 	}
-	productDB.Set(testProduct.ID, testProduct)
+	if err := productDB.Set(testProduct.ID, testProduct); err != nil {
+		t.Fatalf("Failed to set test product: %v", err)
+	}
 
 	req := httptest.NewRequest("GET", "/api/products/test123", nil)
 	rec := httptest.NewRecorder()
@@ -111,7 +115,9 @@ func TestReserveStockHandler(t *testing.T) {
 		Price: 25.00,
 		Stock: 100,
 	}
-	productDB.Set(testProduct.ID, testProduct)
+	if err := productDB.Set(testProduct.ID, testProduct); err != nil {
+		t.Fatalf("Failed to set test product: %v", err)
+	}
 
 	stockRequest := StockRequest{
 		Quantity: 10,
@@ -157,7 +163,9 @@ func TestReleaseStockHandler(t *testing.T) {
 		Price: 30.00,
 		Stock: 50,
 	}
-	productDB.Set(testProduct.ID, testProduct)
+	if err := productDB.Set(testProduct.ID, testProduct); err != nil {
+		t.Fatalf("Failed to set test product: %v", err)
+	}
 
 	stockRequest := StockRequest{
 		Quantity: 20,

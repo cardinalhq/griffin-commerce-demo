@@ -113,7 +113,9 @@ func TestAddItemHandler(t *testing.T) {
 			Price: 19.99,
 			Stock: 100,
 		}
-		json.NewEncoder(w).Encode(product)
+		if err := json.NewEncoder(w).Encode(product); err != nil {
+			t.Errorf("Failed to encode product: %v", err)
+		}
 	}))
 	defer productServer.Close()
 

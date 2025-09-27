@@ -36,7 +36,9 @@ func TestHealthHandler(t *testing.T) {
 }
 
 func TestGetRatesHandler(t *testing.T) {
-	LoadCarrierConfig("config.yaml")
+	if err := LoadCarrierConfig("config.yaml"); err != nil {
+		t.Fatalf("Failed to load carrier config: %v", err)
+	}
 
 	req := httptest.NewRequest("GET", "/api/shipping/rates", nil)
 	rec := httptest.NewRecorder()
@@ -77,7 +79,9 @@ func TestGetRatesHandler(t *testing.T) {
 
 func TestCreateShipmentHandler(t *testing.T) {
 	InitShipmentStorage()
-	LoadCarrierConfig("config.yaml")
+	if err := LoadCarrierConfig("config.yaml"); err != nil {
+		t.Fatalf("Failed to load carrier config: %v", err)
+	}
 
 	shipReq := ShipRequest{
 		OrderID: "test-order-456",
@@ -119,7 +123,9 @@ func TestCreateShipmentHandler(t *testing.T) {
 
 func TestCreateShipmentHandlerInvalidRequest(t *testing.T) {
 	InitShipmentStorage()
-	LoadCarrierConfig("config.yaml")
+	if err := LoadCarrierConfig("config.yaml"); err != nil {
+		t.Fatalf("Failed to load carrier config: %v", err)
+	}
 
 	shipReq := ShipRequest{
 		OrderID: "",

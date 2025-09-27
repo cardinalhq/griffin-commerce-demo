@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -24,7 +25,9 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Version:   "1.0.0",
 		Timestamp: time.Now(),
 	}
-	common.WriteJSONResponse(w, health, http.StatusOK)
+	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
+		slog.Error("Failed to write health response", "error", err)
+	}
 }
 
 // ChargeRequest represents a payment charge request
@@ -88,7 +91,9 @@ func ChargeHandler(w http.ResponseWriter, r *http.Request) {
 		statusCode = http.StatusPaymentRequired // 402
 	}
 
-	common.WriteJSONResponse(w, response, statusCode)
+	if err := common.WriteJSONResponse(w, response, statusCode); err != nil {
+		slog.Error("Failed to write charge response", "error", err, "status", statusCode)
+	}
 }
 
 // GetTransactionHandler retrieves a transaction by ID
@@ -114,5 +119,7 @@ func GetTransactionHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:     transaction.CreatedAt,
 	}
 
-	common.WriteJSONResponse(w, response, http.StatusOK)
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.Error("Failed to write transaction response", "error", err)
+	}
 }

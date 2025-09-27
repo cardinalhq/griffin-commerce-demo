@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -28,7 +29,9 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Version:   "1.0.0",
 		Timestamp: time.Now(),
 	}
-	common.WriteJSONResponse(w, health, http.StatusOK)
+	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
+		slog.Error("Failed to write health response", "error", err)
+	}
 }
 
 // CreateCartRequest represents a cart creation request
@@ -60,7 +63,9 @@ func CreateCartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	common.WriteJSONResponse(w, cart, http.StatusCreated)
+	if err := common.WriteJSONResponse(w, cart, http.StatusCreated); err != nil {
+		slog.Error("Failed to write cart response", "error", err)
+	}
 }
 
 // GetCartHandler retrieves a cart
@@ -75,7 +80,9 @@ func GetCartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	common.WriteJSONResponse(w, cart, http.StatusOK)
+	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
+		slog.Error("Failed to write cart response", "error", err)
+	}
 }
 
 // AddItemRequest represents an add item request
@@ -122,7 +129,9 @@ func AddItemHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Return updated cart
 	cart, _ := GetCart(cartID)
-	common.WriteJSONResponse(w, cart, http.StatusOK)
+	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
+		slog.Error("Failed to write cart response", "error", err)
+	}
 }
 
 // RemoveItemHandler removes an item from the cart
@@ -148,7 +157,9 @@ func RemoveItemHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Return updated cart
 	cart, _ := GetCart(cartID)
-	common.WriteJSONResponse(w, cart, http.StatusOK)
+	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
+		slog.Error("Failed to write cart response", "error", err)
+	}
 }
 
 // CheckoutResponse represents a checkout response
@@ -189,7 +200,9 @@ func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
 		Message:    "Ready for checkout",
 	}
 
-	common.WriteJSONResponse(w, response, http.StatusOK)
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.Error("Failed to write checkout response", "error", err)
+	}
 }
 
 // ClearCartHandler clears all items from a cart
@@ -217,5 +230,7 @@ func ClearCartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	common.WriteJSONResponse(w, cart, http.StatusOK)
+	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
+		slog.Error("Failed to write cart response", "error", err)
+	}
 }

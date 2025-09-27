@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"os"
@@ -71,7 +72,10 @@ func main() {
 func getPort() int {
 	if port := os.Getenv("PORT"); port != "" {
 		var p int
-		fmt.Sscanf(port, "%d", &p)
+		if _, err := fmt.Sscanf(port, "%d", &p); err != nil {
+			log.Printf("Failed to parse port: %v", err)
+			return 8085
+		}
 		return p
 	}
 	return 8085
@@ -87,7 +91,11 @@ func loadProductsFromCatalog() error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch products: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Warn("Failed to close response body", "error", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("catalog service returned status %d", resp.StatusCode)
@@ -116,7 +124,9 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Version:   "1.0.0",
 		Timestamp: time.Now(),
 	}
-	common.WriteJSONResponse(w, health, http.StatusOK)
+	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }
 
 type RecommendationsResponse struct {
@@ -139,7 +149,9 @@ func GetRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
 		Type:     "trending",
 	}
 
-	common.WriteJSONResponse(w, response, http.StatusOK)
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }
 
 func GetProductRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +172,9 @@ func GetProductRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
 		Type:     "related",
 	}
 
-	common.WriteJSONResponse(w, response, http.StatusOK)
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }
 
 func getRandomRecommendations(count int, excludeID string) []common.Product {

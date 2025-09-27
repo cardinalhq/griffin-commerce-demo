@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -29,7 +29,11 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 
 		// Log the request
 		duration := time.Since(start)
-		log.Printf("%-6s %-25s %d %v", r.Method, r.URL.Path, wrapped.statusCode, duration)
+		slog.Info("HTTP Request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", wrapped.statusCode,
+			"duration", duration)
 	})
 }
 
@@ -120,6 +124,11 @@ func ChainMiddleware(middlewares ...func(http.Handler) http.Handler) func(http.H
 // generateID generates a random ID
 func generateID() string {
 	bytes := make([]byte, 16)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		// crypto/rand.Read should never fail except catastrophic system failure
+		// Fall back to timestamp-based ID
+		slog.Error("Failed to generate random ID", "error", err)
+		return hex.EncodeToString([]byte(time.Now().String()))
+	}
 	return hex.EncodeToString(bytes)
 }

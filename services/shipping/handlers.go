@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -23,7 +24,9 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Version:   "1.0.0",
 		Timestamp: time.Now(),
 	}
-	common.WriteJSONResponse(w, health, http.StatusOK)
+	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }
 
 type RatesResponse struct {
@@ -51,7 +54,9 @@ func GetRatesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	carriersMutex.RUnlock()
 
-	common.WriteJSONResponse(w, response, http.StatusOK)
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }
 
 type ShipRequest struct {
@@ -106,11 +111,15 @@ func CreateShipmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		response.ErrorMessage = err.Error()
-		common.WriteJSONResponse(w, response, http.StatusServiceUnavailable)
+		if writeErr := common.WriteJSONResponse(w, response, http.StatusServiceUnavailable); writeErr != nil {
+			slog.Error("Failed to write response", "error", writeErr)
+		}
 		return
 	}
 
-	common.WriteJSONResponse(w, response, http.StatusOK)
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }
 
 func GetShipmentHandler(w http.ResponseWriter, r *http.Request) {
@@ -136,5 +145,7 @@ func GetShipmentHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:   shipment.CreatedAt,
 	}
 
-	common.WriteJSONResponse(w, response, http.StatusOK)
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -52,7 +53,9 @@ func main() {
 	staticDir := "./static"
 	if _, err := os.Stat(staticDir); os.IsNotExist(err) {
 		log.Printf("Warning: static directory does not exist, creating it")
-		os.MkdirAll(staticDir, 0755)
+		if err := os.MkdirAll(staticDir, 0755); err != nil {
+			log.Printf("Failed to create static directory: %v", err)
+		}
 	}
 
 	// Serve static files
@@ -75,7 +78,10 @@ func main() {
 func getPort() int {
 	if port := os.Getenv("PORT"); port != "" {
 		var p int
-		fmt.Sscanf(port, "%d", &p)
+		if _, err := fmt.Sscanf(port, "%d", &p); err != nil {
+			log.Printf("Failed to parse port: %v", err)
+			return 8083
+		}
 		return p
 	}
 	return 8083
@@ -89,7 +95,9 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Version:   "1.0.0",
 		Timestamp: time.Now(),
 	}
-	common.WriteJSONResponse(w, health, http.StatusOK)
+	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }
 
 // ImageResponse represents an image URL response
@@ -114,5 +122,7 @@ func GetProductImageHandler(w http.ResponseWriter, r *http.Request) {
 		ImageURL:  fmt.Sprintf("/static/%s", imageName),
 	}
 
-	common.WriteJSONResponse(w, response, http.StatusOK)
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.Error("Failed to write response", "error", err)
+	}
 }

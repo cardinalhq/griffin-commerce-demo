@@ -3,6 +3,7 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -93,15 +94,16 @@ func setupCatalogService(t *testing.T, router *mux.Router) {
 			Status:  "healthy",
 			Service: "catalog-service",
 		}
-		common.WriteJSONResponse(w, health, http.StatusOK)
+		if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
+			slog.Error("Failed to write response", "error", err)
+		}
 	}).Methods("GET")
 
 	router.HandleFunc("/api/products", func(w http.ResponseWriter, r *http.Request) {
-		products := []common.Product{}
-		for _, p := range testProducts {
-			products = append(products, p)
+		products := append([]common.Product{}, testProducts...)
+		if err := common.WriteJSONResponse(w, products, http.StatusOK); err != nil {
+			slog.Error("Failed to write response", "error", err)
 		}
-		common.WriteJSONResponse(w, products, http.StatusOK)
 	}).Methods("GET")
 
 	router.HandleFunc("/api/products/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +122,9 @@ func setupCatalogService(t *testing.T, router *mux.Router) {
 			return
 		}
 
-		common.WriteJSONResponse(w, product, http.StatusOK)
+		if err := common.WriteJSONResponse(w, product, http.StatusOK); err != nil {
+			slog.Error("Failed to write response", "error", err)
+		}
 	}).Methods("GET")
 }
 
@@ -137,7 +141,11 @@ func setupCartService(router *mux.Router, catalogURL string) {
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				slog.Warn("Failed to close response body", "error", err)
+			}
+		}()
 
 		if resp.StatusCode == http.StatusNotFound {
 			return nil, common.ErrNotFound
@@ -157,7 +165,9 @@ func setupCartService(router *mux.Router, catalogURL string) {
 			Status:  "healthy",
 			Service: "cart-service",
 		}
-		common.WriteJSONResponse(w, health, http.StatusOK)
+		if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
+			slog.Error("Failed to write health response", "error", err)
+		}
 	}).Methods("GET")
 
 	router.HandleFunc("/api/cart/create", func(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +192,9 @@ func setupCartService(router *mux.Router, catalogURL string) {
 			return
 		}
 
-		common.WriteJSONResponse(w, cart, http.StatusCreated)
+		if err := common.WriteJSONResponse(w, cart, http.StatusCreated); err != nil {
+			slog.Error("Failed to write cart response", "error", err)
+		}
 	}).Methods("POST")
 
 	router.HandleFunc("/api/cart/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +214,9 @@ func setupCartService(router *mux.Router, catalogURL string) {
 		}
 		cart := cartData
 
-		common.WriteJSONResponse(w, cart, http.StatusOK)
+		if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
+			slog.Error("Failed to write cart response", "error", err)
+		}
 	}).Methods("GET")
 
 	router.HandleFunc("/api/cart/{id}/add", func(w http.ResponseWriter, r *http.Request) {
@@ -285,7 +299,9 @@ func setupCartService(router *mux.Router, catalogURL string) {
 			return
 		}
 
-		common.WriteJSONResponse(w, cart, http.StatusOK)
+		if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
+			slog.Error("Failed to write cart response", "error", err)
+		}
 	}).Methods("POST")
 
 	router.HandleFunc("/api/cart/{id}/item/{productId}", func(w http.ResponseWriter, r *http.Request) {
@@ -328,7 +344,9 @@ func setupCartService(router *mux.Router, catalogURL string) {
 			return
 		}
 
-		common.WriteJSONResponse(w, cart, http.StatusOK)
+		if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
+			slog.Error("Failed to write cart response", "error", err)
+		}
 	}).Methods("DELETE")
 
 	router.HandleFunc("/api/cart/{id}/clear", func(w http.ResponseWriter, r *http.Request) {
@@ -359,7 +377,9 @@ func setupCartService(router *mux.Router, catalogURL string) {
 			return
 		}
 
-		common.WriteJSONResponse(w, cart, http.StatusOK)
+		if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
+			slog.Error("Failed to write cart response", "error", err)
+		}
 	}).Methods("DELETE")
 }
 
@@ -397,7 +417,9 @@ func testCreateCartAndAddProduct(t *testing.T, cartURL string) {
 	}
 
 	var cart common.Cart
-	json.NewDecoder(resp.Body).Decode(&cart)
+	if err := json.NewDecoder(resp.Body).Decode(&cart); err != nil {
+		t.Fatalf("Failed to decode cart response: %v", err)
+	}
 
 	// Add product
 	addReq := struct {
@@ -414,7 +436,9 @@ func testCreateCartAndAddProduct(t *testing.T, cartURL string) {
 		t.Fatalf("Failed to add item: %v", err)
 	}
 
-	json.NewDecoder(resp.Body).Decode(&cart)
+	if err := json.NewDecoder(resp.Body).Decode(&cart); err != nil {
+		t.Fatalf("Failed to decode cart response: %v", err)
+	}
 
 	if len(cart.Items) != 1 {
 		t.Errorf("Expected 1 item, got %d", len(cart.Items))
@@ -440,7 +464,9 @@ func testAddNonExistentProduct(t *testing.T, cartURL string) {
 	resp, _ := http.Post(cartURL+"/api/cart/create", "application/json", bytes.NewBuffer(body))
 
 	var cart common.Cart
-	json.NewDecoder(resp.Body).Decode(&cart)
+	if err := json.NewDecoder(resp.Body).Decode(&cart); err != nil {
+		t.Fatalf("Failed to decode cart response: %v", err)
+	}
 
 	// Try to add non-existent product
 	addReq := struct {
@@ -469,7 +495,9 @@ func testMultipleProductsTotal(t *testing.T, cartURL string) {
 	resp, _ := http.Post(cartURL+"/api/cart/create", "application/json", bytes.NewBuffer(body))
 
 	var cart common.Cart
-	json.NewDecoder(resp.Body).Decode(&cart)
+	if err := json.NewDecoder(resp.Body).Decode(&cart); err != nil {
+		t.Fatalf("Failed to decode cart response: %v", err)
+	}
 
 	// Add first product (2 x $15.99 = $31.98)
 	addReq := struct {
@@ -480,15 +508,21 @@ func testMultipleProductsTotal(t *testing.T, cartURL string) {
 		Quantity:  2,
 	}
 	body, _ = json.Marshal(addReq)
-	http.Post(cartURL+"/api/cart/"+cart.ID+"/add", "application/json", bytes.NewBuffer(body))
+	if _, err := http.Post(cartURL+"/api/cart/"+cart.ID+"/add", "application/json", bytes.NewBuffer(body)); err != nil {
+		t.Fatalf("Failed to add product: %v", err)
+	}
 
 	// Add second product (1 x $45.50 = $45.50)
 	addReq.ProductID = "PROD-INT-002"
 	addReq.Quantity = 1
 	body, _ = json.Marshal(addReq)
-	resp, _ = http.Post(cartURL+"/api/cart/"+cart.ID+"/add", "application/json", bytes.NewBuffer(body))
-
-	json.NewDecoder(resp.Body).Decode(&cart)
+	if resp, err := http.Post(cartURL+"/api/cart/"+cart.ID+"/add", "application/json", bytes.NewBuffer(body)); err != nil {
+		t.Fatalf("Failed to add product: %v", err)
+	} else {
+		if err := json.NewDecoder(resp.Body).Decode(&cart); err != nil {
+			t.Fatalf("Failed to decode cart response: %v", err)
+		}
+	}
 
 	expectedTotal := (2 * 15.99) + (1 * 45.50) // $77.48
 	if cart.Total != expectedTotal {
@@ -506,7 +540,9 @@ func testRemoveProduct(t *testing.T, cartURL string) {
 	resp, _ := http.Post(cartURL+"/api/cart/create", "application/json", bytes.NewBuffer(body))
 
 	var cart common.Cart
-	json.NewDecoder(resp.Body).Decode(&cart)
+	if err := json.NewDecoder(resp.Body).Decode(&cart); err != nil {
+		t.Fatalf("Failed to decode cart response: %v", err)
+	}
 
 	// Add two products
 	for _, p := range []string{"PROD-INT-001", "PROD-INT-002"} {
@@ -518,7 +554,9 @@ func testRemoveProduct(t *testing.T, cartURL string) {
 			Quantity:  1,
 		}
 		body, _ = json.Marshal(addReq)
-		http.Post(cartURL+"/api/cart/"+cart.ID+"/add", "application/json", bytes.NewBuffer(body))
+		if _, err := http.Post(cartURL+"/api/cart/"+cart.ID+"/add", "application/json", bytes.NewBuffer(body)); err != nil {
+			t.Fatalf("Failed to add product: %v", err)
+		}
 	}
 
 	// Remove first product
@@ -526,7 +564,9 @@ func testRemoveProduct(t *testing.T, cartURL string) {
 	client := &http.Client{}
 	resp, _ = client.Do(req)
 
-	json.NewDecoder(resp.Body).Decode(&cart)
+	if err := json.NewDecoder(resp.Body).Decode(&cart); err != nil {
+		t.Fatalf("Failed to decode cart response: %v", err)
+	}
 
 	if len(cart.Items) != 1 {
 		t.Errorf("Expected 1 item after removal, got %d", len(cart.Items))
@@ -547,7 +587,9 @@ func testClearCart(t *testing.T, cartURL string) {
 	resp, _ := http.Post(cartURL+"/api/cart/create", "application/json", bytes.NewBuffer(body))
 
 	var cart common.Cart
-	json.NewDecoder(resp.Body).Decode(&cart)
+	if err := json.NewDecoder(resp.Body).Decode(&cart); err != nil {
+		t.Fatalf("Failed to decode cart response: %v", err)
+	}
 
 	// Add a product
 	addReq := struct {
@@ -558,14 +600,18 @@ func testClearCart(t *testing.T, cartURL string) {
 		Quantity:  3,
 	}
 	body, _ = json.Marshal(addReq)
-	http.Post(cartURL+"/api/cart/"+cart.ID+"/add", "application/json", bytes.NewBuffer(body))
+	if _, err := http.Post(cartURL+"/api/cart/"+cart.ID+"/add", "application/json", bytes.NewBuffer(body)); err != nil {
+		t.Fatalf("Failed to add product: %v", err)
+	}
 
 	// Clear cart
 	req, _ := http.NewRequest("DELETE", cartURL+"/api/cart/"+cart.ID+"/clear", nil)
 	client := &http.Client{}
 	resp, _ = client.Do(req)
 
-	json.NewDecoder(resp.Body).Decode(&cart)
+	if err := json.NewDecoder(resp.Body).Decode(&cart); err != nil {
+		t.Fatalf("Failed to decode cart response: %v", err)
+	}
 
 	if len(cart.Items) != 0 {
 		t.Errorf("Expected empty cart, got %d items", len(cart.Items))
