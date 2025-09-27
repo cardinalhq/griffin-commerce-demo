@@ -1,7 +1,7 @@
 <script lang="ts">
   import { cart, cartTotal } from '../stores/cart';
   import { fly } from 'svelte/transition';
-  import EnhancedCheckout from './EnhancedCheckout.svelte';
+  import Checkout from './Checkout.svelte';
 
   export let show = false;
   let showCheckout = false;
@@ -109,4 +109,4 @@
   </div>
 {/if}
 
-<EnhancedCheckout bind:show={showCheckout} />
+<Checkout bind:show={showCheckout} />
