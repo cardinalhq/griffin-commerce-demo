@@ -1,10 +1,10 @@
-module github.com/griffincommerce/demo/services/payment
+module github.com/cardinalhq/griffin-commerce-demo/services/payment
 
 go 1.21
 
 require (
 	github.com/gorilla/mux v1.8.1
-	github.com/griffincommerce/demo/common v0.0.0-local
+	github.com/cardinalhq/griffin-commerce-demo/common v0.0.0-local
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -21,4 +21,4 @@ require (
 	golang.org/x/sys v0.17.0 // indirect
 )
 
-replace github.com/griffincommerce/demo/common => ../../common
+replace github.com/cardinalhq/griffin-commerce-demo/common => ../../common

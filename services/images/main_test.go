@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
-	"github.com/griffincommerce/demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common"
 )
 
 func TestHealthHandler(t *testing.T) {
@@ -39,8 +39,8 @@ func TestGetProductImageHandler(t *testing.T) {
 		productID    string
 		expectedPath string
 	}{
-		{"PROD-001", "/static/rope-toy.jpg"},
-		{"PROD-004", "/static/puppy-food.jpg"},
+		{"PROD-001", "/static/dog-food.jpg"},
+		{"PROD-004", "/static/collar.jpg"},
 		{"unknown", "/static/placeholder.jpg"},
 	}
 

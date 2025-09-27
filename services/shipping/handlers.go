@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/griffincommerce/demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common"
 )
 
 func RegisterRoutes(r *mux.Router) {

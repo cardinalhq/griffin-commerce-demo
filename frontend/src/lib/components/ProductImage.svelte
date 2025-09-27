@@ -20,10 +20,10 @@
   function getEmoji(name: string): string {
     const lowerName = name.toLowerCase();
     if (lowerName.includes('food')) return '🍖';
-    if (lowerName.includes('toy') || lowerName.includes('rope')) return '🎾';
+    if (lowerName.includes('toy') || lowerName.includes('rope')) return '⚾';
     if (lowerName.includes('bed')) return '🛏️';
     if (lowerName.includes('collar')) return '🔵';
-    if (lowerName.includes('ball') || lowerName.includes('tennis')) return '⚾';
+    if (lowerName.includes('ball') || lowerName.includes('tennis')) return '🎾';
     if (lowerName.includes('shampoo')) return '🧴';
     if (lowerName.includes('treat')) return '🍪';
     if (lowerName.includes('leash')) return '🦴';
@@ -32,7 +32,7 @@
 
   onMount(async () => {
     try {
-      const response = await fetch(`http://localhost:8083/api/images/product/${productId}`);
+      const response = await fetch(`/api/images/product/${productId}`);
       if (response.ok) {
         const data = await response.json();
 
@@ -44,7 +44,7 @@
         img.onload = () => {
           // Use hash for cache busting if available, otherwise use timestamp
           const cacheBuster = data.hash ? `v=${data.hash}` : `t=${Date.now()}`;
-          imageUrl = `http://localhost:8083${data.image_url}?${cacheBuster}`;
+          imageUrl = `${data.image_url}?${cacheBuster}`;
           loading = false;
         };
         img.onerror = () => {
@@ -54,7 +54,7 @@
         };
         // Use hash for cache busting when checking if image loads
         const cacheBuster = data.hash ? `v=${data.hash}` : `t=${Date.now()}`;
-        img.src = `http://localhost:8083${data.image_url}?${cacheBuster}`;
+        img.src = `${data.image_url}?${cacheBuster}`;
       } else {
         error = true;
         loading = false;
