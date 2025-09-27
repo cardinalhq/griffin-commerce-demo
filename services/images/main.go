@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/griffincommerce/demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common"
 )
 
 // ImageInfo contains image details

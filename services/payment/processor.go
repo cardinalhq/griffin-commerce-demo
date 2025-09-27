@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/griffincommerce/demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common"
 	"gopkg.in/yaml.v3"
 )
 

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/griffincommerce/demo/common"
+import "github.com/cardinalhq/griffin-commerce-demo/common"
 
 // Export internal functions for testing
 func InitProducts() {

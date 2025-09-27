@@ -1,4 +1,4 @@
-module github.com/griffincommerce/demo/common
+module github.com/cardinalhq/griffin-commerce-demo/common
 
 go 1.21
 

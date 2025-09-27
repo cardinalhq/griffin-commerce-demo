@@ -30,7 +30,7 @@
     await cart.init();
 
     try {
-      const response = await fetch('http://localhost:8080/api/products');
+      const response = await fetch('/api/products');
       if (!response.ok) throw new Error('Failed to fetch products');
       const data = await response.json();
       products = Array.isArray(data) ? data : (data.products || []);

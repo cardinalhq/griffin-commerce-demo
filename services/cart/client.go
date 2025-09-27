@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/griffincommerce/demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common"
 )
 
 var (
