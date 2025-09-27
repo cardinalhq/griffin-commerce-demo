@@ -1,6 +1,7 @@
 # Dockerfile for GoReleaser
 # GoReleaser will provide the pre-built binaries
 FROM alpine:3.19
+ARG TARGETPLATFORM
 
 WORKDIR /app
 
@@ -12,9 +13,7 @@ RUN apk add --no-cache \
     curl \
     bash
 
-# Copy the binary built by GoReleaser
-# GoReleaser will handle the correct binary for each architecture
-COPY catalog-service payment-service cart-service shipping-service images-service recommendations-service /app/bin/
+COPY $TARGETPLATFORM/catalog-service $TARGETPLATFORM/payment-service $TARGETPLATFORM/cart-service $TARGETPLATFORM/shipping-service $TARGETPLATFORM/images-service $TARGETPLATFORM/recommendations-service /app/bin/
 
 # Copy pre-built frontend (built by GoReleaser hook)
 COPY frontend/dist /app/frontend/dist
