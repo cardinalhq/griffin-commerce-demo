@@ -12,9 +12,9 @@ import (
 
 func RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/health", HealthHandler).Methods("GET")
-	r.HandleFunc("/api/shipping/rates", GetRatesHandler).Methods("GET")
-	r.HandleFunc("/api/shipping/ship", CreateShipmentHandler).Methods("POST")
-	r.HandleFunc("/api/shipping/{id}", GetShipmentHandler).Methods("GET")
+	r.HandleFunc("/api/shipping/rates", GetRatesHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/shipping/ship", CreateShipmentHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/shipping/{id}", GetShipmentHandler).Methods("GET", "OPTIONS")
 }
 
 func HealthHandler(w http.ResponseWriter, r *http.Request) {

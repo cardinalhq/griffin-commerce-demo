@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fade } from 'svelte/transition';
   import { cart } from '../stores/cart';
+  import ProductImage from './ProductImage.svelte';
 
   export let product: any = null;
   export let show = false;
@@ -50,9 +51,12 @@
   <!-- Product Detail Modal -->
   <div
     class="fixed inset-0 flex items-center justify-center z-50 p-4"
+    on:click={() => show = false}
     transition:fade
   >
-    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div
+      class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+      on:click|stopPropagation>
       <div class="relative">
         <!-- Close button -->
         <button
@@ -65,8 +69,13 @@
         </button>
 
         <!-- Product Image -->
-        <div class="h-64 bg-gradient-to-br from-purple-100 to-pink-100 rounded-t-lg flex items-center justify-center">
-          <span class="text-8xl">{getEmoji(product.name)}</span>
+        <div class="h-64 rounded-t-lg overflow-hidden">
+          <ProductImage
+            productId={product.id}
+            productName={product.name}
+            size="large"
+            className="w-full h-full"
+          />
         </div>
 
         <!-- Product Info -->

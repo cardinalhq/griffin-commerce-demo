@@ -101,19 +101,17 @@ func loadProductsFromCatalog() error {
 		return fmt.Errorf("catalog service returned status %d", resp.StatusCode)
 	}
 
-	var productsResp struct {
-		Products []common.Product `json:"products"`
-	}
+	var products []common.Product
 
-	if err := json.NewDecoder(resp.Body).Decode(&productsResp); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&products); err != nil {
 		return fmt.Errorf("failed to decode products: %w", err)
 	}
 
 	productCacheMutex.Lock()
-	productCache = productsResp.Products
+	productCache = products
 	productCacheMutex.Unlock()
 
-	log.Printf("Loaded %d products from catalog", len(productsResp.Products))
+	log.Printf("Loaded %d products from catalog", len(products))
 	return nil
 }
 

@@ -52,6 +52,24 @@ function createCartStore() {
       }
     },
 
+    async updateQuantity(productId: string, quantity: number) {
+      if (!cartId) return;
+
+      if (quantity <= 0) {
+        return this.removeItem(productId);
+      }
+
+      try {
+        // Remove item first, then add with new quantity
+        await api.removeFromCart(cartId, productId);
+        const cart = await api.addToCart(cartId, productId, quantity);
+        set(cart);
+      } catch (error) {
+        console.error('Failed to update item quantity:', error);
+        throw error;
+      }
+    },
+
     async removeItem(productId: string) {
       if (!cartId) return;
 

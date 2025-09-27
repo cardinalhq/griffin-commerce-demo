@@ -13,8 +13,8 @@ import (
 // RegisterRoutes registers all HTTP routes
 func RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/health", HealthHandler).Methods("GET")
-	r.HandleFunc("/api/payments/charge", ChargeHandler).Methods("POST")
-	r.HandleFunc("/api/payments/{id}", GetTransactionHandler).Methods("GET")
+	r.HandleFunc("/api/payments/charge", ChargeHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/payments/{id}", GetTransactionHandler).Methods("GET", "OPTIONS")
 }
 
 // HealthHandler returns service health status

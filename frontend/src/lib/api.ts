@@ -110,8 +110,15 @@ class ApiService {
   }
 
   // Shipping Service
+  async getShippingRates(zipCode: string): Promise<ShippingQuote[]> {
+    const response = await fetch(`${API_BASE}:8084/api/shipping/rates?zip=${zipCode}`);
+    if (!response.ok) throw new Error('Failed to get shipping rates');
+    const data = await response.json();
+    return data.quotes || [];
+  }
+
   async getShippingQuote(weight: number, destination: string): Promise<ShippingQuote> {
-    const response = await fetch(`${API_BASE}:8083/api/shipping/quote`, {
+    const response = await fetch(`${API_BASE}:8084/api/shipping/quote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ weight, destination })
@@ -137,10 +144,37 @@ class ApiService {
 
   // Image Service
   async getProductImage(productId: string): Promise<string> {
-    const response = await fetch(`${API_BASE}:8084/api/images/product/${productId}`);
-    if (!response.ok) return '/placeholder.jpg';
+    const response = await fetch(`${API_BASE}:8083/api/images/product/${productId}`);
+    if (!response.ok) return null;
     const data = await response.json();
-    return `${API_BASE}:8084${data.image_url}`;
+    return `${API_BASE}:8083${data.image_url}`;
+  }
+
+  // Complete checkout with payment and shipping
+  async completeCheckout(cartId: string, paymentInfo: any, shippingInfo: any): Promise<any> {
+    // Process payment first
+    const paymentResult = await this.processPayment({
+      order_id: cartId,
+      amount: paymentInfo.amount,
+      processor: paymentInfo.processor || 'PuppyPay'
+    });
+
+    // Create shipment
+    const shipmentResult = await fetch(`${API_BASE}:8084/api/shipping/ship`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        order_id: cartId,
+        address: shippingInfo.address,
+        carrier: shippingInfo.carrier
+      })
+    });
+
+    return {
+      payment: paymentResult,
+      shipment: await shipmentResult.json(),
+      order_id: cartId
+    };
   }
 }
 
