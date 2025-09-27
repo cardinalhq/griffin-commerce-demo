@@ -16,6 +16,7 @@ func RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/cart/{id}", GetCartHandler).Methods("GET")
 	r.HandleFunc("/api/cart/{id}/add", AddItemHandler).Methods("POST")
 	r.HandleFunc("/api/cart/{id}/item/{productId}", RemoveItemHandler).Methods("DELETE")
+	r.HandleFunc("/api/cart/{id}/clear", ClearCartHandler).Methods("DELETE")
 	r.HandleFunc("/api/cart/{id}/checkout", CheckoutHandler).Methods("POST")
 }
 
@@ -189,4 +190,32 @@ func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	common.WriteJSONResponse(w, response, http.StatusOK)
+}
+
+// ClearCartHandler clears all items from a cart
+func ClearCartHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	cartID := vars["id"]
+
+	cart, err := GetCart(cartID)
+	if err != nil {
+		correlationID := common.GetCorrelationID(r.Context())
+		common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, correlationID)
+		return
+	}
+
+	// Clear all items
+	cart.Items = []common.CartItem{}
+	cart.Total = 0
+	cart.UpdatedAt = time.Now()
+
+	// Save the cleared cart
+	if err := cartDB.Set(cart.ID, cart); err != nil {
+		correlationID := common.GetCorrelationID(r.Context())
+		appErr := common.NewAppError("CLEAR_FAILED", "Failed to clear cart")
+		common.WriteErrorResponse(w, appErr, http.StatusInternalServerError, correlationID)
+		return
+	}
+
+	common.WriteJSONResponse(w, cart, http.StatusOK)
 }
