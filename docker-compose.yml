@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Frontend - exposed to the public
+  frontend:
+    image: docker.flame.org/library/griffin-commerce-demo:latest
+    build: .
+    ports:
+      - "5173:5173"
+    environment:
+      - SERVICE_NAME=frontend
+      - PORT=5173
+      - NODE_ENV=production
+    depends_on:
+      - catalog
+      - payment
+      - cart
+      - shipping
+      - images
+      - recommendations
+    networks:
+      - griffin-network
+
+  # Backend services - internal only
+  catalog:
+    image: docker.flame.org/library/griffin-commerce-demo:latest
+    build: .
+    environment:
+      - SERVICE_NAME=catalog
+      - PORT=8080
+    networks:
+      - griffin-network
+    restart: unless-stopped
+
+  payment:
+    image: docker.flame.org/library/griffin-commerce-demo:latest
+    build: .
+    environment:
+      - SERVICE_NAME=payment
+      - PORT=8081
+    networks:
+      - griffin-network
+    restart: unless-stopped
+
+  cart:
+    image: docker.flame.org/library/griffin-commerce-demo:latest
+    build: .
+    environment:
+      - SERVICE_NAME=cart
+      - PORT=8082
+    networks:
+      - griffin-network
+    restart: unless-stopped
+
+  images:
+    image: docker.flame.org/library/griffin-commerce-demo:latest
+    build: .
+    environment:
+      - SERVICE_NAME=images
+      - PORT=8083
+    volumes:
+      - ./services/images/static:/app/services/images/static:ro
+    networks:
+      - griffin-network
+    restart: unless-stopped
+
+  shipping:
+    image: docker.flame.org/library/griffin-commerce-demo:latest
+    build: .
+    environment:
+      - SERVICE_NAME=shipping
+      - PORT=8084
+    networks:
+      - griffin-network
+    restart: unless-stopped
+
+  recommendations:
+    image: docker.flame.org/library/griffin-commerce-demo:latest
+    build: .
+    environment:
+      - SERVICE_NAME=recommendations
+      - PORT=8085
+    networks:
+      - griffin-network
+    restart: unless-stopped
+
+networks:
+  griffin-network:
+    driver: bridge

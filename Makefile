@@ -1,7 +1,7 @@
-.PHONY: all test check clean catalog payment cart shipping images recommendations fmt lint install-tools
+.PHONY: all test check clean catalog payment cart shipping images-service recommendations fmt lint install-tools images docker-build docker-push
 
 # Default target
-all: catalog payment cart shipping images recommendations
+all: catalog payment cart shipping images-service recommendations
 
 # Output directory for binaries
 BIN_DIR := ./bin
@@ -27,7 +27,7 @@ shipping: $(BIN_DIR)
 	@echo "Building Shipping Service..."
 	@cd services/shipping && go build -o ../../$(BIN_DIR)/shipping-service .
 
-images: $(BIN_DIR)
+images-service: $(BIN_DIR)
 	@echo "Building Image Service..."
 	@cd services/images && go build -o ../../$(BIN_DIR)/images-service .
 
@@ -104,7 +104,10 @@ help:
 	@echo "  payment            - Build Payment Service"
 	@echo "  cart               - Build Cart Service"
 	@echo "  shipping           - Build Shipping Service"
-	@echo "  images             - Build Image Service"
+	@echo "  images-service     - Build Image Service"
+	@echo "  images             - Build and push Docker images to registry"
+	@echo "  docker-build       - Build Docker image locally"
+	@echo "  docker-push        - Push Docker image to registry"
 	@echo "  recommendations    - Build Recommendations Service"
 	@echo "  test               - Run all unit tests"
 	@echo "  integration-test   - Run integration tests"
@@ -114,3 +117,35 @@ help:
 	@echo "  install-tools      - Install development tools (golangci-lint)"
 	@echo "  clean              - Remove all compiled binaries"
 	@echo "  help               - Show this help message"
+
+# Docker configuration
+REGISTRY := docker.flame.org/library
+IMAGE_NAME := griffin-commerce-demo
+TAG ?= latest
+PLATFORMS := linux/arm64,linux/amd64
+
+# Build and push multi-arch Docker images using GoReleaser
+images:
+	@echo "Building and pushing multi-arch Docker images using GoReleaser..."
+	@if ! command -v goreleaser > /dev/null; then \
+		echo "Installing GoReleaser..."; \
+		go install github.com/goreleaser/goreleaser/v2@latest; \
+	fi
+	@goreleaser release --clean
+
+# Build Docker images locally without pushing (test build)
+docker-build:
+	@echo "Building Docker images locally with GoReleaser (no push)..."
+	@if ! command -v goreleaser > /dev/null; then \
+		echo "Installing GoReleaser..."; \
+		go install github.com/goreleaser/goreleaser/v2@latest; \
+	fi
+	@goreleaser release --snapshot --clean --skip=publish
+
+# Push Docker image to registry
+docker-push: docker-build
+	@echo "Tagging and pushing image to registry..."
+	@docker tag $(IMAGE_NAME):$(TAG) $(REGISTRY)/$(IMAGE_NAME):$(TAG)
+	@docker tag $(IMAGE_NAME):$(TAG) $(REGISTRY)/$(IMAGE_NAME):latest
+	@docker push $(REGISTRY)/$(IMAGE_NAME):$(TAG)
+	@docker push $(REGISTRY)/$(IMAGE_NAME):latest

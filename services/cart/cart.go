@@ -1,4 +1,4 @@
-package main
+package cart
 
 import (
 	"crypto/rand"

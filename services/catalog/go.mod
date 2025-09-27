@@ -1,6 +1,6 @@
 module github.com/cardinalhq/griffin-commerce-demo/services/catalog
 
-go 1.21
+go 1.25
 
 require (
 	github.com/gorilla/mux v1.8.1

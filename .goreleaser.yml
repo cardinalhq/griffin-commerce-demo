@@ -1,0 +1,96 @@
+version: 2
+project_name: griffin-commerce-demo
+
+before:
+  hooks:
+    # Build frontend before creating Docker images
+    - cd frontend && npm ci && npm run build
+
+builds:
+  - id: griffin
+    main: ./main.go
+    binary: griffin
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  # Skip archives, we only need the binaries for Docker
+  - format: binary
+    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}"
+
+dockers:
+  - image_templates:
+      - "docker.flame.org/library/griffin-commerce-demo:{{ .Tag }}-amd64"
+      - "docker.flame.org/library/griffin-commerce-demo:latest-amd64"
+
+    use: buildx
+    goarch: amd64
+    goos: linux
+
+    dockerfile: Dockerfile
+
+    ids:
+      - griffin
+
+    extra_files:
+      - frontend/dist
+      - products.yaml
+      - entrypoint.sh
+
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--push"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+
+  - image_templates:
+      - "docker.flame.org/library/griffin-commerce-demo:{{ .Tag }}-arm64"
+      - "docker.flame.org/library/griffin-commerce-demo:latest-arm64"
+
+    use: buildx
+    goarch: arm64
+    goos: linux
+
+    dockerfile: Dockerfile
+
+    ids:
+      - griffin
+
+    extra_files:
+      - frontend/dist
+      - products.yaml
+      - entrypoint.sh
+
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--push"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+
+docker_manifests:
+  - name_template: "docker.flame.org/library/griffin-commerce-demo:{{ .Tag }}"
+    image_templates:
+      - "docker.flame.org/library/griffin-commerce-demo:{{ .Tag }}-amd64"
+      - "docker.flame.org/library/griffin-commerce-demo:{{ .Tag }}-arm64"
+
+  - name_template: "docker.flame.org/library/griffin-commerce-demo:latest"
+    image_templates:
+      - "docker.flame.org/library/griffin-commerce-demo:latest-amd64"
+      - "docker.flame.org/library/griffin-commerce-demo:latest-arm64"
+
+checksum:
+  name_template: 'checksums.txt'
