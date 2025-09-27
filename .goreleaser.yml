@@ -22,6 +22,8 @@ builds:
       - -X main.version={{.Version}}
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
+    flags:
+      - -trimpath
 
 archives:
   - id: griffin-archive
@@ -30,69 +32,20 @@ archives:
     files:
       - none*  # This will only include the binary
 
-dockers:
-  - image_templates:
-      - "docker.flame.org/library/griffin-commerce-demo:{{ .Tag }}-amd64"
-      - "docker.flame.org/library/griffin-commerce-demo:latest-amd64"
-
-    use: buildx
-    goarch: amd64
-    goos: linux
-
-    dockerfile: Dockerfile
-
-    ids:
-      - griffin
-
-    extra_files:
-      - frontend/dist
-      - products.yaml
-      - entrypoint.sh
-
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--push"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-
-  - image_templates:
-      - "docker.flame.org/library/griffin-commerce-demo:{{ .Tag }}-arm64"
-      - "docker.flame.org/library/griffin-commerce-demo:latest-arm64"
-
-    use: buildx
-    goarch: arm64
-    goos: linux
-
-    dockerfile: Dockerfile
-
-    ids:
-      - griffin
-
-    extra_files:
-      - frontend/dist
-      - products.yaml
-      - entrypoint.sh
-
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--push"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-
-docker_manifests:
-  - name_template: "docker.flame.org/library/griffin-commerce-demo:{{ .Tag }}"
-    image_templates:
-      - "docker.flame.org/library/griffin-commerce-demo:{{ .Tag }}-amd64"
-      - "docker.flame.org/library/griffin-commerce-demo:{{ .Tag }}-arm64"
-
-  - name_template: "docker.flame.org/library/griffin-commerce-demo:latest"
-    image_templates:
-      - "docker.flame.org/library/griffin-commerce-demo:latest-amd64"
-      - "docker.flame.org/library/griffin-commerce-demo:latest-arm64"
+dockers_v2:
+  - images:
+      - docker.flame.org/library/griffin-commerce-demo
+    tags:
+      - "v{{ .Version }}"
+      - "{{ if .IsNightly }}nightly{{ end }}"
+      - "{{ if not .IsNightly }}latest{{ end }}"
+    labels:
+      "org.opencontainers.image.description": "Demo apps for Cardinal's AI tools"
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
 
 checksum:
   name_template: 'checksums.txt'
