@@ -27,8 +27,8 @@ var (
 
 // ErrorResponse is the JSON error response structure
 type ErrorResponse struct {
-	Error       AppError `json:"error"`
-	CorrelationID string `json:"correlation_id,omitempty"`
+	Error         AppError `json:"error"`
+	CorrelationID string   `json:"correlation_id,omitempty"`
 }
 
 // WriteErrorResponse writes an error response to the client
