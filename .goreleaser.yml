@@ -1,11 +1,6 @@
 version: 2
 project_name: griffin-commerce-demo
 
-before:
-  hooks:
-    # Build frontend before creating Docker images
-    - cd frontend && npm ci && npm run build
-
 builds:
   - id: griffin
     main: ./main.go
@@ -28,13 +23,16 @@ builds:
 archives:
   - id: griffin-archive
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: tar.gz
+    formats:
+      - tar.gz
+      - zip
     files:
       - none*  # This will only include the binary
 
 dockers_v2:
   - images:
       - docker.flame.org/library/griffin-commerce-demo
+    dockerfile: Dockerfile-goreleaser
     tags:
       - "v{{ .Version }}"
       - "{{ if .IsNightly }}nightly{{ end }}"
@@ -46,6 +44,9 @@ dockers_v2:
       "org.opencontainers.image.revision": "{{.FullCommit}}"
       "org.opencontainers.image.version": "{{.Version}}"
       "org.opencontainers.image.source": "{{.GitURL}}"
+    extra_files:
+      - entrypoint.sh
+      - services/images/static
 
 checksum:
   name_template: 'checksums.txt'
