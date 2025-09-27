@@ -1,0 +1,15 @@
+processors:
+  PuppyPay:
+    name: PuppyPay
+    failure_rate: 0.05
+    latency_ms: 200
+
+  KittyCard:
+    name: KittyCard
+    failure_rate: 0.02
+    latency_ms: 150
+
+  DoggieCoin:
+    name: DoggieCoin
+    failure_rate: 0.01
+    latency_ms: 100

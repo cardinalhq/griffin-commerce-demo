@@ -1,7 +1,7 @@
 <script lang="ts">
   import { cart, cartTotal } from '../stores/cart';
   import { fly } from 'svelte/transition';
-  import Checkout from './Checkout.svelte';
+  import EnhancedCheckout from './EnhancedCheckout.svelte';
 
   export let show = false;
   let showCheckout = false;
@@ -41,11 +41,31 @@
               <div class="flex-1">
                 <h3 class="font-medium">{item.name}</h3>
                 <p class="text-sm text-gray-600">
-                  ${item.price.toFixed(2)} × {item.quantity}
+                  ${item.price.toFixed(2)} each
                 </p>
               </div>
-              <div class="flex items-center space-x-2">
-                <span class="font-semibold">${item.subtotal.toFixed(2)}</span>
+              <div class="flex items-center space-x-3">
+                <div class="flex items-center border rounded-lg">
+                  <button
+                    on:click={() => cart.updateQuantity(item.product_id, item.quantity - 1)}
+                    class="px-3 py-1 hover:bg-gray-100 transition-colors"
+                    disabled={item.quantity <= 1}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
+                    </svg>
+                  </button>
+                  <span class="px-3 py-1 min-w-[3rem] text-center">{item.quantity}</span>
+                  <button
+                    on:click={() => cart.updateQuantity(item.product_id, item.quantity + 1)}
+                    class="px-3 py-1 hover:bg-gray-100 transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                </div>
+                <span class="font-semibold min-w-[4rem] text-right">${item.subtotal.toFixed(2)}</span>
                 <button
                   on:click={() => cart.removeItem(item.product_id)}
                   class="text-red-500 hover:text-red-700"
@@ -89,4 +109,4 @@
   </div>
 {/if}
 
-<Checkout bind:show={showCheckout} />
+<EnhancedCheckout bind:show={showCheckout} />
