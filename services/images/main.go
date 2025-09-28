@@ -1,18 +1,18 @@
 package images
 
 import (
+	"context"
 	"crypto/md5"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/gorilla/mux"
 )
 
 // ImageInfo contains image details
@@ -35,12 +35,16 @@ var productImages = map[string]ImageInfo{
 var imageHashes = map[string]string{}
 
 func Start() error {
-	// Initialize telemetry
-	shutdown, err := common.InitTelemetry("image-service")
+	// Initialize telemetry with context
+	ctx, shutdown, err := common.SetupTelemetry("image-service", nil)
 	if err != nil {
-		log.Printf("Failed to initialize telemetry: %v", err)
+		return fmt.Errorf("failed to initialize telemetry: %w", err)
 	}
-	defer shutdown()
+	defer func() {
+		if err := shutdown(); err != nil {
+			slog.Error("Failed to shutdown telemetry", "error", err)
+		}
+	}()
 
 	// Compute hashes for all images on startup
 	computeImageHashes()
@@ -63,36 +67,52 @@ func Start() error {
 	// Static file server for /static path
 	staticDir := "./services/images/static"
 	if _, err := os.Stat(staticDir); os.IsNotExist(err) {
-		log.Printf("Warning: static directory does not exist, creating it")
+		slog.Warn("Static directory does not exist, creating it", "dir", staticDir)
 		if err := os.MkdirAll(staticDir, 0755); err != nil {
-			log.Printf("Failed to create static directory: %v", err)
+			slog.Error("Failed to create static directory", "error", err)
 		}
 	}
 
 	// Serve static files
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 
-	// Start server
+	// Create HTTP server
 	port := getPort()
-	log.Printf("Image Service starting on port %d", port)
-
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: r,
 	}
 
-	if err := server.ListenAndServe(); err != nil {
-		return fmt.Errorf("server failed to start: %w", err)
-	}
+	// Start server in a goroutine
+	serverErr := make(chan error, 1)
+	go func() {
+		slog.Info("Image Service starting", "port", port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- fmt.Errorf("server failed: %w", err)
+		}
+	}()
 
-	return nil
+	// Wait for context cancellation or server error
+	select {
+	case <-ctx.Done():
+		slog.Info("Shutting down server due to context cancellation")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server shutdown failed: %w", err)
+		}
+		slog.Info("Server shutdown complete")
+		return nil
+	case err := <-serverErr:
+		return err
+	}
 }
 
 func getPort() int {
 	if port := os.Getenv("PORT"); port != "" {
 		var p int
 		if _, err := fmt.Sscanf(port, "%d", &p); err != nil {
-			log.Printf("Failed to parse port: %v", err)
+			slog.Warn("Failed to parse PORT env var, using default", "port", port, "error", err)
 			return 8083
 		}
 		return p
@@ -150,7 +170,7 @@ func computeImageHashes() {
 
 	files, err := filepath.Glob(filepath.Join(staticDir, "*"))
 	if err != nil {
-		log.Printf("Failed to list files in static directory: %v", err)
+		slog.Error("Failed to list files in static directory", "error", err)
 		return
 	}
 
@@ -166,20 +186,20 @@ func computeImageHashes() {
 		// Compute MD5 hash
 		file, err := os.Open(filePath)
 		if err != nil {
-			log.Printf("Failed to open file %s: %v", fileName, err)
+			slog.Error("Failed to open file", "file", fileName, "error", err)
 			continue
 		}
 
 		hash := md5.New()
 		if _, err := io.Copy(hash, file); err != nil {
 			file.Close()
-			log.Printf("Failed to compute hash for %s: %v", fileName, err)
+			slog.Error("Failed to compute hash", "file", fileName, "error", err)
 			continue
 		}
 		file.Close()
 
 		hashString := fmt.Sprintf("%x", hash.Sum(nil))
 		imageHashes[fileName] = hashString[:8] // Use first 8 chars for brevity
-		log.Printf("Computed hash for %s: %s", fileName, imageHashes[fileName])
+		slog.Debug("Computed hash for image", "file", fileName, "hash", imageHashes[fileName])
 	}
 }

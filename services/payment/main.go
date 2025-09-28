@@ -1,28 +1,34 @@
 package payment
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/gorilla/mux"
 )
 
 func Start() error {
-	// Initialize telemetry
-	shutdown, err := common.InitTelemetry("payment-service")
+	// Initialize telemetry with context
+	ctx, shutdown, err := common.SetupTelemetry("payment-service", nil)
 	if err != nil {
-		log.Printf("Failed to initialize telemetry: %v", err)
+		return fmt.Errorf("failed to initialize telemetry: %w", err)
 	}
-	defer shutdown()
+	defer func() {
+		if err := shutdown(); err != nil {
+			slog.Error("Failed to shutdown telemetry", "error", err)
+		}
+	}()
 
 	// Load processor configuration
 	if err := LoadProcessorConfig("config.yaml"); err != nil {
-		log.Fatalf("Failed to load processor config: %v", err)
+		return fmt.Errorf("failed to load processor config: %w", err)
 	}
-	log.Printf("Loaded %d payment processors", len(processors))
+	slog.Info("Payment processors loaded", "count", len(processors))
 
 	// Initialize transaction storage
 	InitTransactionStorage()
@@ -39,28 +45,43 @@ func Start() error {
 	// Register routes
 	RegisterRoutes(r)
 
-	// Start server
+	// Create HTTP server
 	port := getPort()
-	log.Printf("Payment Service starting on port %d", port)
-	log.Printf("Available processors: PuppyPay, KittyCard, DoggieCoin")
-
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: r,
 	}
 
-	if err := server.ListenAndServe(); err != nil {
-		return fmt.Errorf("server failed to start: %w", err)
-	}
+	// Start server in a goroutine
+	serverErr := make(chan error, 1)
+	go func() {
+		slog.Info("Payment Service starting", "port", port, "processors", []string{"PuppyPay", "KittyCard", "DoggieCoin"})
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- fmt.Errorf("server failed: %w", err)
+		}
+	}()
 
-	return nil
+	// Wait for context cancellation or server error
+	select {
+	case <-ctx.Done():
+		slog.Info("Shutting down server due to context cancellation")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server shutdown failed: %w", err)
+		}
+		slog.Info("Server shutdown complete")
+		return nil
+	case err := <-serverErr:
+		return err
+	}
 }
 
 func getPort() int {
 	if port := os.Getenv("PORT"); port != "" {
 		var p int
 		if _, err := fmt.Sscanf(port, "%d", &p); err != nil {
-			log.Printf("Failed to parse PORT env var '%s': %v, using default", port, err)
+			slog.Warn("Failed to parse PORT env var, using default", "port", port, "error", err)
 			return 8081
 		}
 		return p
