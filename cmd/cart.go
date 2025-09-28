@@ -20,5 +20,5 @@ var cartCmd = &cobra.Command{
 }
 
 func init() {
-	// Add cart command to root
+	rootCmd.AddCommand(cartCmd)
 }

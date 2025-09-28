@@ -20,5 +20,5 @@ var recommendationsCmd = &cobra.Command{
 }
 
 func init() {
-	// Add recommendations command to root
+	rootCmd.AddCommand(recommendationsCmd)
 }

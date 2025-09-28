@@ -20,5 +20,5 @@ var paymentCmd = &cobra.Command{
 }
 
 func init() {
-	// Add payment command to root
+	rootCmd.AddCommand(paymentCmd)
 }

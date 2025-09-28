@@ -20,5 +20,5 @@ var catalogCmd = &cobra.Command{
 }
 
 func init() {
-	// Add catalog command to root
+	rootCmd.AddCommand(catalogCmd)
 }
