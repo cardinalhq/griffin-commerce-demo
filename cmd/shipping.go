@@ -20,5 +20,5 @@ var shippingCmd = &cobra.Command{
 }
 
 func init() {
-	// Add shipping command to root
+	rootCmd.AddCommand(shippingCmd)
 }

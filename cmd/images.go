@@ -20,5 +20,5 @@ var imagesCmd = &cobra.Command{
 }
 
 func init() {
-	// Add images command to root
+	rootCmd.AddCommand(imagesCmd)
 }
