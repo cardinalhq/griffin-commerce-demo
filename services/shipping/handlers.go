@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+
 	"github.com/cardinalhq/griffin-commerce-demo/common"
 )
 
