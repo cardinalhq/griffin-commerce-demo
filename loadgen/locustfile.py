@@ -1,6 +1,5 @@
 import random
 import time
-import json
 import uuid
 from locust import HttpUser, task, between, events
 from locust.env import Environment
