@@ -17,17 +17,19 @@ This directory contains a Locust-based load generator that simulates realistic u
 ### Local Development
 
 1. Install Locust:
+
 ```bash
 pip install locust
 ```
 
-2. Run with Web UI:
+1. Run with Web UI:
+
 ```bash
 cd loadgen
 locust -f locustfile.py --host http://localhost:5173
 ```
 
-3. Open browser to http://localhost:8089
+1. Open browser to <http://localhost:8089>
 
 ### Docker Compose
 
@@ -56,12 +58,13 @@ LOCUST_USERS=100 LOCUST_SPAWN_RATE=5 docker-compose up loadgen
 | `NORMAL_USER_PCT` | 60 | Percentage of normal users |
 | `MOBILE_USER_PCT` | 30 | Percentage of mobile users |
 | `POWER_USER_PCT` | 10 | Percentage of power users |
-| `FRONTEND_HOST` | http://localhost:5173 | Frontend URL for local testing |
-| `FRONTEND_PROD_HOST` | http://frontend:5173 | Frontend URL in Docker |
+| `FRONTEND_HOST` | <http://localhost:5173> | Frontend URL for local testing |
+| `FRONTEND_PROD_HOST` | <http://frontend:5173> | Frontend URL in Docker |
 
 ### Memory Limits
 
 The Docker container is configured with:
+
 - Maximum memory: 256MB
 - Reserved memory: 128MB
 
@@ -70,23 +73,28 @@ These limits keep resource usage low while supporting hundreds of simulated user
 ## User Scenarios
 
 ### Browse Catalog (30% weight)
+
 - GET `/` (homepage)
 - GET `/api/products`
 - Simulates browsing with realistic delays
 
 ### View Product Details (25% weight)
+
 - GET `/api/products/{id}`
 - GET `/static/products/{id}.jpg` (product image)
 - GET `/api/recommendations/product/{id}`
 
 ### Add to Cart (20% weight)
+
 - POST `/api/cart/{id}/add`
 - Adds 1-3 items randomly
 
 ### View Cart (15% weight)
+
 - GET `/api/cart/{id}`
 
 ### Checkout (3% weight)
+
 - POST `/api/cart/{id}/checkout`
 - Creates new cart after successful checkout
 
@@ -109,6 +117,7 @@ These limits keep resource usage low while supporting hundreds of simulated user
 ## Running Load Tests
 
 ### Interactive Mode (with Web UI)
+
 ```bash
 # Start Locust with web interface
 docker-compose up loadgen
@@ -118,6 +127,7 @@ docker-compose up loadgen
 ```
 
 ### Headless Mode (CI/CD friendly)
+
 ```bash
 # Run 100 users for 5 minutes
 docker run --rm \
@@ -134,7 +144,8 @@ docker run --rm \
 ### Dynamic Load Adjustment
 
 You can adjust load in real-time through the Locust web UI:
-1. Navigate to http://localhost:8089
+
+1. Navigate to <http://localhost:8089>
 2. Use the "Edit" button to change user count
 3. Watch metrics update in real-time
 
@@ -143,11 +154,13 @@ You can adjust load in real-time through the Locust web UI:
 ### For Higher Loads
 
 1. Increase spawn rate gradually:
+
 ```bash
 LOCUST_SPAWN_RATE=20 docker-compose up loadgen
 ```
 
-2. Run distributed Locust:
+1. Run distributed Locust:
+
 ```bash
 # Master
 locust -f locustfile.py --master --host http://localhost:5173
@@ -156,7 +169,8 @@ locust -f locustfile.py --master --host http://localhost:5173
 locust -f locustfile.py --worker --master-host=localhost
 ```
 
-3. Adjust memory limits in docker-compose.yml if needed:
+1. Adjust memory limits in docker-compose.yml if needed:
+
 ```yaml
 deploy:
   resources:
@@ -166,17 +180,14 @@ deploy:
 
 ## Troubleshooting
 
-### High Memory Usage
-- Reduce `LOCUST_USERS`
-- Increase `RESET_STATS_INTERVAL` to clear old statistics
-- Use headless mode (no web UI)
-
 ### Connection Errors
+
 - Ensure all services are running: `docker-compose ps`
 - Check frontend is accessible: `curl http://localhost:5173`
 - Verify network connectivity in Docker
 
 ### Slow Response Times
+
 - Start with fewer users and gradually increase
 - Check backend service logs for errors
 - Monitor CPU/memory on host machine
