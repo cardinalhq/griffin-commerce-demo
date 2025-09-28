@@ -84,6 +84,38 @@ services:
       - griffin-network
     restart: unless-stopped
 
+  # Load generator - Locust for simulating user traffic
+  loadgen:
+    build: ./loadgen
+    ports:
+      - "8089:8089"  # Locust web UI
+    environment:
+      - FRONTEND_PROD_HOST=http://frontend:5173
+      - LOCUST_USERS=${LOCUST_USERS:-10}
+      - LOCUST_SPAWN_RATE=${LOCUST_SPAWN_RATE:-1}
+      - LOCUST_RUN_TIME=${LOCUST_RUN_TIME:-60s}
+      - NORMAL_USER_PCT=${NORMAL_USER_PCT:-60}
+      - MOBILE_USER_PCT=${MOBILE_USER_PCT:-30}
+      - POWER_USER_PCT=${POWER_USER_PCT:-10}
+    command: >
+      locust
+      -f /loadgen/locustfile.py
+      --host=http://frontend:5173
+      --headless
+      --users=${LOCUST_USERS:-10}
+      --spawn-rate=${LOCUST_SPAWN_RATE:-1}
+    depends_on:
+      - frontend
+    networks:
+      - griffin-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M  # Limit memory usage
+        reservations:
+          memory: 128M
+    restart: unless-stopped
+
 networks:
   griffin-network:
     driver: bridge
