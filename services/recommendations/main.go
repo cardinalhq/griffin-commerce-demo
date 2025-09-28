@@ -1,9 +1,9 @@
 package recommendations
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -12,70 +12,111 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/gorilla/mux"
 )
 
 var (
 	productCache      []common.Product
 	productCacheMutex sync.RWMutex
 	catalogClient     *http.Client
+	refreshTicker     *time.Ticker
+	refreshDone       chan struct{}
 )
 
 func Start() error {
-	shutdown, err := common.InitTelemetry("recommendations-service")
+	// Initialize telemetry with context
+	ctx, shutdown, err := common.SetupTelemetry("recommendations-service", nil)
 	if err != nil {
-		log.Printf("Failed to initialize telemetry: %v", err)
+		return fmt.Errorf("failed to initialize telemetry: %w", err)
 	}
-	defer shutdown()
+	defer func() {
+		if err := shutdown(); err != nil {
+			slog.Error("Failed to shutdown telemetry", "error", err)
+		}
+	}()
 
 	catalogClient = &http.Client{Timeout: 10 * time.Second}
 
+	// Load initial products
 	if err := loadProductsFromCatalog(); err != nil {
-		log.Printf("Warning: Failed to preload products: %v", err)
+		slog.Warn("Failed to preload products", "error", err)
 	}
 
+	// Start background refresh goroutine
+	refreshDone = make(chan struct{})
+	refreshTicker = time.NewTicker(5 * time.Minute)
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			if err := loadProductsFromCatalog(); err != nil {
-				log.Printf("Failed to refresh product cache: %v", err)
+		defer refreshTicker.Stop()
+		for {
+			select {
+			case <-refreshTicker.C:
+				if err := loadProductsFromCatalog(); err != nil {
+					slog.Error("Failed to refresh product cache", "error", err)
+				}
+			case <-refreshDone:
+				return
 			}
 		}
 	}()
 
+	// Create router
 	r := mux.NewRouter()
 
+	// Apply middleware
 	r.Use(common.LoggingMiddleware)
 	r.Use(common.CorrelationIDMiddleware)
 	r.Use(common.TracingMiddleware("recommendations-service"))
 	r.Use(common.CORSMiddleware)
 
+	// Register routes
 	r.HandleFunc("/health", HealthHandler).Methods("GET")
 	r.HandleFunc("/api/recommendations", GetRecommendationsHandler).Methods("GET")
 	r.HandleFunc("/api/recommendations/product/{id}", GetProductRecommendationsHandler).Methods("GET")
 
+	// Create HTTP server
 	port := getPort()
-	log.Printf("Recommendations Service starting on port %d", port)
-
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: r,
 	}
 
-	if err := server.ListenAndServe(); err != nil {
-		return fmt.Errorf("server failed to start: %w", err)
-	}
+	// Start server in a goroutine
+	serverErr := make(chan error, 1)
+	go func() {
+		slog.Info("Recommendations Service starting", "port", port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- fmt.Errorf("server failed: %w", err)
+		}
+	}()
 
-	return nil
+	// Wait for context cancellation or server error
+	select {
+	case <-ctx.Done():
+		slog.Info("Shutting down server due to context cancellation")
+
+		// Stop the refresh ticker
+		close(refreshDone)
+
+		// Shutdown HTTP server
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server shutdown failed: %w", err)
+		}
+		slog.Info("Server shutdown complete")
+		return nil
+	case err := <-serverErr:
+		close(refreshDone)
+		return err
+	}
 }
 
 func getPort() int {
 	if port := os.Getenv("PORT"); port != "" {
 		var p int
 		if _, err := fmt.Sscanf(port, "%d", &p); err != nil {
-			log.Printf("Failed to parse port: %v", err)
+			slog.Warn("Failed to parse PORT env var, using default", "port", port, "error", err)
 			return 8085
 		}
 		return p
@@ -113,7 +154,7 @@ func loadProductsFromCatalog() error {
 	productCache = products
 	productCacheMutex.Unlock()
 
-	log.Printf("Loaded %d products from catalog", len(products))
+	slog.Info("Loaded products from catalog", "count", len(products))
 	return nil
 }
 
