@@ -56,9 +56,3 @@ func NewResource(serviceName string) *resource.Resource {
 func GetTracer(name string) trace.Tracer {
 	return otel.Tracer(name)
 }
-
-// StartSpan starts a new span
-func StartSpan(ctx context.Context, name string) (context.Context, trace.Span) {
-	tracer := GetTracer("griffin-commerce")
-	return tracer.Start(ctx, name)
-}
