@@ -8,9 +8,7 @@ echo "Starting service: $SERVICE_NAME"
 
 case "$SERVICE_NAME" in
   frontend)
-    cd /app/frontend
-    # Use Vite preview for production (or you could use nginx)
-    npx vite preview --host 0.0.0.0 --port ${PORT:-5173}
+    serve -s /app/frontend/dist -l ${PORT:-5173}
     ;;
   catalog)
     PORT=${PORT:-8080} /app/bin/griffin catalog
