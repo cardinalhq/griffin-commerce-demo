@@ -31,7 +31,7 @@ archives:
 
 dockers_v2:
   - images:
-      - docker.flame.org/library/griffin-commerce-demo
+      - public.ecr.aws/cardinalhq.io/griffin-commerce-demo
     dockerfile: Dockerfile-goreleaser
     tags:
       - "v{{ .Version }}"
