@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 CardinalHQ, Inc.
+
 # Stage 1: build the Svelte frontend
 FROM node:24-alpine AS frontend-builder
 WORKDIR /app/frontend

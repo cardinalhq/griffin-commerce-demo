@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Copyright (C) 2026 CardinalHQ, Inc. -->
+
 <script lang="ts">
   import { cartCount } from '../stores/cart';
   import Cart from './Cart.svelte';
