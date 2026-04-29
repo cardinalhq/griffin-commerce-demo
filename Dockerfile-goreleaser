@@ -12,14 +12,14 @@ ARG TARGETPLATFORM
 
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates curl bash && \
-    npm install -g serve
+RUN apk add --no-cache ca-certificates curl bash nginx gettext
 
 COPY $TARGETPLATFORM/griffin /app/bin/
 COPY services/images/static /app/services/images/static
 COPY products.yaml /app/products.yaml
 COPY config.yaml /app/config.yaml
 COPY entrypoint.sh /app/entrypoint.sh
+COPY frontend/nginx.conf.template /app/nginx.conf.template
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 RUN chmod +x /app/bin/* /app/entrypoint.sh
