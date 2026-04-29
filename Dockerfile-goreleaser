@@ -12,7 +12,9 @@ ARG TARGETPLATFORM
 
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates curl bash nginx gettext
+RUN apk add --no-cache ca-certificates curl bash nginx gettext && \
+    addgroup -g 65532 nonroot && \
+    adduser -D -u 65532 -G nonroot nonroot
 
 COPY $TARGETPLATFORM/griffin /app/bin/
 COPY services/images/static /app/services/images/static
@@ -23,6 +25,8 @@ COPY frontend/nginx.conf.template /app/nginx.conf.template
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 RUN chmod +x /app/bin/* /app/entrypoint.sh
+
+USER 65532:65532
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:${PORT:-5173}/ || exit 1
