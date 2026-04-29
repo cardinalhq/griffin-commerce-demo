@@ -32,6 +32,7 @@ archives:
 dockers_v2:
   - images:
       - public.ecr.aws/cardinalhq.io/griffin-commerce-demo
+      - ghcr.io/cardinalhq/griffin-commerce-demo
     dockerfile: Dockerfile-goreleaser
     tags:
       - "v{{ .Version }}"
