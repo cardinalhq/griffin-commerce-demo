@@ -9,8 +9,8 @@ echo "Starting service: $SERVICE_NAME"
 case "$SERVICE_NAME" in
   frontend)
     export PORT=${PORT:-5173}
-    envsubst '${PORT}' < /app/nginx.conf.template > /etc/nginx/nginx.conf
-    exec nginx -g 'daemon off;'
+    envsubst '${PORT}' < /app/nginx.conf.template > /tmp/nginx.conf
+    exec nginx -c /tmp/nginx.conf -g 'daemon off;'
     ;;
   catalog)
     PORT=${PORT:-8080} /app/bin/griffin catalog
