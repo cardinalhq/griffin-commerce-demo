@@ -94,7 +94,7 @@ help:
 	@echo "  help               - Show this help message"
 
 # Docker configuration
-REGISTRY := docker.flame.org/library
+REGISTRY := public.ecr.aws/cardinalhq.io
 IMAGE_NAME := griffin-commerce-demo
 TAG ?= latest
 PLATFORMS := linux/arm64,linux/amd64
