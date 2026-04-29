@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 CardinalHQ, Inc.
+
 // API service for backend communication
 
 // Use relative URLs - they will be proxied through Vite dev server

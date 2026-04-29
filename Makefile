@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 CardinalHQ, Inc.
+
 .PHONY: all build test check clean fmt lint install-tools images docker-build docker-push
 
 # Default target
