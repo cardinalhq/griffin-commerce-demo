@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 CardinalHQ, Inc.
+
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte'
 
 /** @type {import("@sveltejs/vite-plugin-svelte").SvelteConfig} */

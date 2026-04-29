@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 CardinalHQ, Inc.
+
 import { writable, derived } from 'svelte/store';
 import { api, type Cart, type CartItem } from '../api';
 
