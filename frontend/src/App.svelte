@@ -7,7 +7,9 @@
   import ProductDetail from './lib/components/ProductDetail.svelte';
   import ProductImage from './lib/components/ProductImage.svelte';
   import Recommendations from './lib/components/Recommendations.svelte';
+  import Toast from './lib/components/Toast.svelte';
   import { cart } from './lib/stores/cart';
+  import { toasts } from './lib/stores/toast';
 
   interface Product {
     id: string;
@@ -59,7 +61,7 @@
       }
     } catch (err) {
       console.error('Failed to add to cart:', err);
-      alert('Failed to add item to cart. Please try again.');
+      toasts.error('Failed to add item to cart. Please try again.');
     }
   }
 
@@ -239,3 +241,5 @@
 </div>
 
 <ProductDetail bind:show={showProductDetail} product={selectedProduct} />
+
+<Toast />

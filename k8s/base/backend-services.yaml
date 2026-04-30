@@ -116,6 +116,8 @@ spec:
           value: "cart"
         - name: PORT
           value: "8082"
+        - name: CATALOG_SERVICE_URL
+          value: "http://catalog:8080"
         resources:
           requests:
             memory: "128Mi"
@@ -254,6 +256,8 @@ spec:
           value: "recommendations"
         - name: PORT
           value: "8085"
+        - name: CATALOG_SERVICE_URL
+          value: "http://catalog:8080"
         resources:
           requests:
             memory: "128Mi"

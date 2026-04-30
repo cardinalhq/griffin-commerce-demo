@@ -4,6 +4,7 @@
 <script lang="ts">
   import { fade } from 'svelte/transition';
   import { cart } from '../stores/cart';
+  import { toasts } from '../stores/toast';
   import ProductImage from './ProductImage.svelte';
 
   export let product: any = null;
@@ -27,7 +28,7 @@
       }
     } catch (err) {
       console.error('Failed to add to cart:', err);
-      alert('Failed to add item to cart. Please try again.');
+      toasts.error('Failed to add item to cart. Please try again.');
     }
   }
 
