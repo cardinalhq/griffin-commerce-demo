@@ -72,17 +72,36 @@ kubectl apply -k k8s/overlays/prod
 
 Telemetry is **off by default**: with no OTLP env vars set, the services log
 to stdout only and emit no exporter traffic. To export traces, metrics, and
-logs to a collector, use the `with-otlp` overlay:
+logs, pick the overlay that matches how your collector is reachable.
+
+### Per-node collector (DaemonSet + hostPort)
 
 ```sh
-kubectl apply -k k8s/overlays/with-otlp
+kubectl apply -k k8s/overlays/with-otlp-nodelocal
 ```
 
-The overlay assumes a per-node collector reachable at `:4318/HTTP` on each
-Node IP (the typical DaemonSet pattern). If your collector is somewhere else
-— for example a cluster Service — edit `OTEL_EXPORTER_OTLP_ENDPOINT` in
-`k8s/overlays/with-otlp/kustomization.yaml` to point at it (e.g.
-`http://otel-collector.observability:4318`).
+Each backend Pod resolves its endpoint to the Node IP it was scheduled on
+(`status.hostIP`) on port `4318/HTTP`. This is the classic Kubernetes pattern
+where a collector DaemonSet exposes a hostPort on every node and Pods short-
+circuit to their local node, avoiding cross-node hops.
+
+### Single endpoint URL
+
+```sh
+kubectl apply -k k8s/overlays/with-otlp-url
+```
+
+All backends export to the same URL (a Service, Route, Ingress, or external
+endpoint). Edit `k8s/overlays/with-otlp-url/kustomization.yaml` and replace
+the placeholder URL — the default is
+`http://otel-collector.observability.svc.cluster.local:4318` — with whatever
+your collector is reachable at. Drop `OTEL_INSECURE: "true"` from each patch
+if the endpoint speaks HTTPS.
+
+This is the recommended overlay on **OpenShift**, where SCCs typically
+restrict hostPort and pod-to-Node-IP traffic, making the node-local pattern
+awkward; routing everything to a Service or Route URL stays inside the
+sanctioned pod network.
 
 ## Notes
 

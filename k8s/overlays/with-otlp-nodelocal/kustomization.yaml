@@ -1,11 +1,14 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Opt-in overlay that enables OTLP export from every backend service.
-# Assumes a per-node OpenTelemetry collector listening on 4318/HTTP — i.e. a
-# DaemonSet whose Pods accept connections on the Node IP. If your collector
-# lives elsewhere (e.g. a cluster Service), edit OTEL_EXPORTER_OTLP_ENDPOINT
-# below to point at it (for example "http://otel-collector.observability:4318").
+# Opt-in overlay that enables OTLP export against a per-node collector.
+#
+# Each backend Pod resolves its endpoint to the Node IP it was scheduled on
+# (status.hostIP), assuming the collector is exposed at port 4318/HTTP via
+# a DaemonSet + hostPort. If you can't or don't want to use hostPort (common
+# on OpenShift, where SCCs restrict it), use the sibling overlay
+# `with-otlp-url` instead and point OTEL_EXPORTER_OTLP_ENDPOINT at a
+# Service URL.
 
 resources:
   - ../../base
