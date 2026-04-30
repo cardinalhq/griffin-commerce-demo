@@ -31,7 +31,7 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: "catalog"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4317"
+          value: "http://$(HOST_IP):4318"
         - name: OTEL_INSECURE
           value: "true"
         resources:
@@ -87,7 +87,7 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: "payment"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4317"
+          value: "http://$(HOST_IP):4318"
         - name: OTEL_INSECURE
           value: "true"
         resources:
@@ -145,7 +145,7 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: "cart"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4317"
+          value: "http://$(HOST_IP):4318"
         - name: OTEL_INSECURE
           value: "true"
         resources:
@@ -201,7 +201,7 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: "images"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4317"
+          value: "http://$(HOST_IP):4318"
         - name: OTEL_INSECURE
           value: "true"
         resources:
@@ -257,7 +257,7 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: "shipping"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4317"
+          value: "http://$(HOST_IP):4318"
         - name: OTEL_INSECURE
           value: "true"
         resources:
@@ -315,7 +315,7 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: "recommendations"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4317"
+          value: "http://$(HOST_IP):4318"
         - name: OTEL_INSECURE
           value: "true"
         resources:
