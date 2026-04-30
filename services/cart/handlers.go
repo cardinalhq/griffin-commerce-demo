@@ -113,7 +113,7 @@ func AddItemHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := AddItemToCart(cartID, req.ProductID, req.Quantity); err != nil {
+	if err := AddItemToCart(r.Context(), cartID, req.ProductID, req.Quantity); err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
 
 		// Determine appropriate error response
