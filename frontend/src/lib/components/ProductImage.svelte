@@ -2,8 +2,6 @@
 <!-- Copyright (C) 2026 CardinalHQ, Inc. -->
 
 <script lang="ts">
-  import { onMount } from 'svelte';
-
   export let productId: string;
   export let productName: string;
   export let size: 'small' | 'medium' | 'large' = 'medium';
@@ -33,41 +31,48 @@
     return '📦';
   }
 
-  onMount(async () => {
+  // Re-run whenever productId changes. Capture id at fetch time so a slow
+  // response from a previous productId can't overwrite the current image.
+  $: if (productId) loadImage(productId);
+
+  async function loadImage(id: string) {
+    loading = true;
+    error = false;
+    imageUrl = null;
     try {
-      const response = await fetch(`/api/images/product/${productId}`);
-      if (response.ok) {
-        const data = await response.json();
-
-        // Store offset from API response
-        imageOffset = data.offset || 'center';
-
-        // Try to load the actual image
-        const img = new Image();
-        img.onload = () => {
-          // Use hash for cache busting if available, otherwise use timestamp
-          const cacheBuster = data.hash ? `v=${data.hash}` : `t=${Date.now()}`;
-          imageUrl = `${data.image_url}?${cacheBuster}`;
-          loading = false;
-        };
-        img.onerror = () => {
-          // Image failed to load, use emoji fallback
-          error = true;
-          loading = false;
-        };
-        // Use hash for cache busting when checking if image loads
-        const cacheBuster = data.hash ? `v=${data.hash}` : `t=${Date.now()}`;
-        img.src = `${data.image_url}?${cacheBuster}`;
-      } else {
+      const response = await fetch(`/api/images/product/${id}`);
+      if (id !== productId) return;
+      if (!response.ok) {
         error = true;
         loading = false;
+        return;
       }
+      const data = await response.json();
+      if (id !== productId) return;
+
+      imageOffset = data.offset || 'center';
+      const cacheBuster = data.hash ? `v=${data.hash}` : `t=${Date.now()}`;
+      const url = `${data.image_url}?${cacheBuster}`;
+
+      const img = new Image();
+      img.onload = () => {
+        if (id !== productId) return;
+        imageUrl = url;
+        loading = false;
+      };
+      img.onerror = () => {
+        if (id !== productId) return;
+        error = true;
+        loading = false;
+      };
+      img.src = url;
     } catch (err) {
+      if (id !== productId) return;
       console.error('Failed to fetch product image:', err);
       error = true;
       loading = false;
     }
-  });
+  }
 </script>
 
 <div class="{sizeClasses[size]} {className} flex items-center justify-center bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg overflow-hidden">

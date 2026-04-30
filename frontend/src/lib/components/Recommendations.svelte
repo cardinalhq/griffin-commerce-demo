@@ -79,7 +79,7 @@
     </div>
   {:else if recommendations.length > 0}
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {#each recommendations as product}
+      {#each recommendations as product (product.id)}
         <div class="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer group" on:click={() => handleProductClick(product)}>
           <div class="aspect-square rounded-t-lg overflow-hidden group-hover:scale-105 transition-transform">
             <ProductImage
