@@ -13,6 +13,8 @@ import (
 
 	"github.com/cardinalhq/griffin-commerce-demo/common"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -24,8 +26,11 @@ var (
 func InitProductClient(baseURL string) {
 	catalogBaseURL = baseURL
 	httpClient = &http.Client{
-		Timeout:   5 * time.Second,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
+		Timeout: 5 * time.Second,
+		Transport: otelhttp.NewTransport(
+			http.DefaultTransport,
+			otelhttp.WithSpanOptions(trace.WithAttributes(attribute.String("peer.service", "catalog"))),
+		),
 	}
 }
 
