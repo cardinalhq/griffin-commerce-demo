@@ -48,6 +48,7 @@ services:
     environment:
       - SERVICE_NAME=cart
       - PORT=8082
+      - CATALOG_SERVICE_URL=http://catalog:8080
     networks:
       - griffin-network
     restart: unless-stopped
@@ -80,6 +81,7 @@ services:
     environment:
       - SERVICE_NAME=recommendations
       - PORT=8085
+      - CATALOG_SERVICE_URL=http://catalog:8080
     networks:
       - griffin-network
     restart: unless-stopped
