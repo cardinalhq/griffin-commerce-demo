@@ -135,7 +135,7 @@
       <p class="text-gray-500">No products found</p>
     {:else}
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {#each paginatedProducts as product}
+        {#each paginatedProducts as product (product.id)}
           <div class="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer group" on:click={() => openProductDetail(product)}>
             <div class="aspect-square rounded-t-lg overflow-hidden group-hover:scale-105 transition-transform">
               <ProductImage
