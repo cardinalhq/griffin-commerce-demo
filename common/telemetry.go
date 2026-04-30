@@ -22,7 +22,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
 	otellog "go.opentelemetry.io/otel/sdk/log"
@@ -66,9 +65,8 @@ func SetupTelemetry(serviceName string, addlAttrs *attribute.Set) (context.Conte
 	}
 
 	var logger *slog.Logger
-	if os.Getenv("OTEL_SERVICE_NAME") != "" {
-		slog.Info("OpenTelemetry OTLP exporting enabled")
-
+	otelEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if os.Getenv("OTEL_SERVICE_NAME") != "" && otelEndpoint != "" {
 		// Set up multi-handler logging (console + OTLP)
 		logger = slog.New(slogmulti.Fanout(
 			slog.NewTextHandler(os.Stdout, opts),
@@ -102,38 +100,11 @@ func SetupTelemetry(serviceName string, addlAttrs *attribute.Set) (context.Conte
 			defer shutdownCancel()
 			return otelShutdown(ctx)
 		}
-	} else if os.Getenv("OTEL_SERVICE_NAME") != "" {
-		// Use stdout exporter when OTLP is not enabled but OTEL_SERVICE_NAME is set
-		slog.Info("OpenTelemetry stdout exporting enabled")
-
-		logger = slog.New(slog.NewTextHandler(os.Stdout, opts)).With(
-			slog.String("service", serviceName),
+		slog.Info("OTLP telemetry enabled",
+			"service", serviceName,
+			"endpoint", otelEndpoint,
+			"insecure", os.Getenv("OTEL_INSECURE") == "true",
 		)
-		slog.SetDefault(logger)
-
-		// Setup stdout exporter for traces
-		exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-		if err != nil {
-			cancel()
-			return ctx, nil, fmt.Errorf("failed to create stdout exporter: %w", err)
-		}
-
-		// Create tracer provider with stdout exporter
-		tp := sdktrace.NewTracerProvider(
-			sdktrace.WithBatcher(exporter),
-			sdktrace.WithResource(newResource(serviceName)),
-		)
-
-		otel.SetTracerProvider(tp)
-		otel.SetTextMapPropagator(newPropagator())
-
-		shutdownFunc = func() error {
-			defer cancel()
-			slog.Info("Shutting down tracer provider")
-			ctx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer shutdownCancel()
-			return tp.Shutdown(ctx)
-		}
 	} else {
 		// Configure slog without OpenTelemetry
 		logger = slog.New(slog.NewTextHandler(os.Stdout, opts)).With(
@@ -144,11 +115,26 @@ func SetupTelemetry(serviceName string, addlAttrs *attribute.Set) (context.Conte
 			defer cancel()
 			return nil
 		}
+		slog.Info("OTLP telemetry disabled; logs go to stdout only",
+			"service", serviceName,
+			"reason", otelDisabledReason(otelEndpoint),
+		)
 	}
 
-	slog.Info("Telemetry initialized", "service", serviceName)
-
 	return ctx, shutdownFunc, nil
+}
+
+func otelDisabledReason(endpoint string) string {
+	switch {
+	case os.Getenv("OTEL_SERVICE_NAME") == "" && endpoint == "":
+		return "OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT are unset"
+	case os.Getenv("OTEL_SERVICE_NAME") == "":
+		return "OTEL_SERVICE_NAME is unset"
+	case endpoint == "":
+		return "OTEL_EXPORTER_OTLP_ENDPOINT is unset"
+	default:
+		return "unknown"
+	}
 }
 
 // handleSignals sets up a context that will be cancelled when interrupt or termination signals are received

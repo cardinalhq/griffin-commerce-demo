@@ -24,6 +24,16 @@ spec:
           value: "catalog"
         - name: PORT
           value: "8080"
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: OTEL_SERVICE_NAME
+          value: "catalog"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4317"
+        - name: OTEL_INSECURE
+          value: "true"
         resources:
           requests:
             memory: "128Mi"
@@ -70,6 +80,16 @@ spec:
           value: "payment"
         - name: PORT
           value: "8081"
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: OTEL_SERVICE_NAME
+          value: "payment"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4317"
+        - name: OTEL_INSECURE
+          value: "true"
         resources:
           requests:
             memory: "128Mi"
@@ -118,6 +138,16 @@ spec:
           value: "8082"
         - name: CATALOG_SERVICE_URL
           value: "http://catalog:8080"
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: OTEL_SERVICE_NAME
+          value: "cart"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4317"
+        - name: OTEL_INSECURE
+          value: "true"
         resources:
           requests:
             memory: "128Mi"
@@ -164,6 +194,16 @@ spec:
           value: "images"
         - name: PORT
           value: "8083"
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: OTEL_SERVICE_NAME
+          value: "images"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4317"
+        - name: OTEL_INSECURE
+          value: "true"
         resources:
           requests:
             memory: "256Mi"
@@ -210,6 +250,16 @@ spec:
           value: "shipping"
         - name: PORT
           value: "8084"
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: OTEL_SERVICE_NAME
+          value: "shipping"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4317"
+        - name: OTEL_INSECURE
+          value: "true"
         resources:
           requests:
             memory: "128Mi"
@@ -258,6 +308,16 @@ spec:
           value: "8085"
         - name: CATALOG_SERVICE_URL
           value: "http://catalog:8080"
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: OTEL_SERVICE_NAME
+          value: "recommendations"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4317"
+        - name: OTEL_INSECURE
+          value: "true"
         resources:
           requests:
             memory: "128Mi"
