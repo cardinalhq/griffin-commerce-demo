@@ -4,6 +4,7 @@
 package cart
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 var (
@@ -22,15 +24,21 @@ var (
 func InitProductClient(baseURL string) {
 	catalogBaseURL = baseURL
 	httpClient = &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout:   5 * time.Second,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 }
 
 // GetProduct fetches product details from the catalog service
-func GetProduct(productID string) (*common.Product, error) {
+func GetProduct(ctx context.Context, productID string) (*common.Product, error) {
 	url := fmt.Sprintf("%s/api/products/%s", catalogBaseURL, productID)
 
-	resp, err := httpClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch product: %w", err)
 	}

@@ -4,6 +4,7 @@
 package cart
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -62,7 +63,7 @@ func GetCart(cartID string) (*common.Cart, error) {
 }
 
 // AddItemToCart adds an item to the cart
-func AddItemToCart(cartID string, productID string, quantity int) error {
+func AddItemToCart(ctx context.Context, cartID string, productID string, quantity int) error {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -73,7 +74,7 @@ func AddItemToCart(cartID string, productID string, quantity int) error {
 	}
 
 	// Get product details from catalog service
-	product, err := GetProduct(productID)
+	product, err := GetProduct(ctx, productID)
 	if err != nil {
 		return fmt.Errorf("failed to get product: %w", err)
 	}

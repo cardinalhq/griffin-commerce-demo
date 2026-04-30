@@ -17,6 +17,7 @@ import (
 
 	"github.com/cardinalhq/griffin-commerce-demo/common"
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 var (
@@ -39,10 +40,13 @@ func Start() error {
 		}
 	}()
 
-	catalogClient = &http.Client{Timeout: 10 * time.Second}
+	catalogClient = &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
 
 	// Load initial products
-	if err := loadProductsFromCatalog(); err != nil {
+	if err := loadProductsFromCatalog(ctx); err != nil {
 		slog.Warn("Failed to preload products", "error", err)
 	}
 
@@ -54,7 +58,7 @@ func Start() error {
 		for {
 			select {
 			case <-refreshTicker.C:
-				if err := loadProductsFromCatalog(); err != nil {
+				if err := loadProductsFromCatalog(ctx); err != nil {
 					slog.Error("Failed to refresh product cache", "error", err)
 				}
 			case <-refreshDone:
@@ -127,13 +131,17 @@ func getPort() int {
 	return 8085
 }
 
-func loadProductsFromCatalog() error {
+func loadProductsFromCatalog(ctx context.Context) error {
 	catalogURL := os.Getenv("CATALOG_SERVICE_URL")
 	if catalogURL == "" {
 		catalogURL = "http://localhost:8080"
 	}
 
-	resp, err := catalogClient.Get(catalogURL + "/api/products")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, catalogURL+"/api/products", nil)
+	if err != nil {
+		return fmt.Errorf("failed to build request: %w", err)
+	}
+	resp, err := catalogClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to fetch products: %w", err)
 	}
