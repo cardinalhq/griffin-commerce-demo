@@ -5,5 +5,5 @@ resources:
   - ../../base
 
 images:
-  - name: docker.flame.org/library/griffin-commerce-demo
-    newTag: dev
+  - name: ghcr.io/cardinalhq/griffin-commerce-demo
+    newTag: latest

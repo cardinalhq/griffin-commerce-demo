@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: docker.flame.org/library/griffin-commerce-demo:latest
+        image: ghcr.io/cardinalhq/griffin-commerce-demo
         ports:
         - containerPort: 5173
         env:

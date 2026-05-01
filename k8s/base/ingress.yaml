@@ -2,10 +2,13 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: griffin-commerce-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
+  # Uncomment and set to match your cluster's ingress controller.
+  # ingressClassName: nginx
   rules:
+  # Uncomment host: to restrict to a specific hostname (recommended for
+  # production / shared clusters). Leaving it off accepts any hostname.
+  # - host: griffin.example.com
   - http:
       paths:
       - path: /
