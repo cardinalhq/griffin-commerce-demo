@@ -103,6 +103,57 @@ restrict hostPort and pod-to-Node-IP traffic, making the node-local pattern
 awkward; routing everything to a Service or Route URL stays inside the
 sanctioned pod network.
 
+## Deploying on OpenShift
+
+The base manifests are restricted-PSA-clean (non-root, dropped caps,
+RuntimeDefault seccomp), but they pin `runAsUser: 65532` — outside any
+namespace's auto-assigned UID range. OpenShift's default `restricted-v2`
+SCC rejects that. After applying the overlay, grant the namespace's
+`default` ServiceAccount the `nonroot-v2` SCC, which permits any non-root
+UID:
+
+```sh
+kubectl apply -k k8s/overlays/with-otlp-url   # or k8s/base, etc.
+
+kubectl create rolebinding nonroot-v2-default \
+  --clusterrole=system:openshift:scc:nonroot-v2 \
+  --serviceaccount=griffin-commerce:default \
+  --namespace=griffin-commerce
+```
+
+(Equivalent `oc` form: `oc adm policy add-scc-to-user nonroot-v2 -z default -n griffin-commerce`.)
+
+### Browser access via a Route
+
+The bundled `Ingress` is generic and won't auto-promote to a Route on
+OpenShift (it has no `host:` and OCP's ingress-to-route translator logs
+`IncompleteIngressToRouteRules`). Create a Route directly instead — fill
+in the wildcard apps domain for your cluster (find it with `kubectl get
+ingresscontroller -n openshift-ingress-operator default -o jsonpath='{.status.domain}'`):
+
+```sh
+cat <<EOF | kubectl apply -f -
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: griffin-commerce
+  namespace: griffin-commerce
+spec:
+  host: griffin.apps.YOUR-CLUSTER-DOMAIN
+  to:
+    kind: Service
+    name: frontend
+    weight: 100
+  port:
+    targetPort: 5173
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+EOF
+```
+
+Then point a browser at `https://griffin.apps.YOUR-CLUSTER-DOMAIN/`.
+
 ## Notes
 
 - Every Deployment runs `replicas: 1`. This is a demo, not an HA reference;
