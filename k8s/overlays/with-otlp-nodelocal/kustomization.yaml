@@ -1,0 +1,172 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Opt-in overlay that enables OTLP export against a per-node collector.
+#
+# Each backend Pod resolves its endpoint to the Node IP it was scheduled on
+# (status.hostIP), assuming the collector is exposed at port 4318/HTTP via
+# a DaemonSet + hostPort. If you can't or don't want to use hostPort (common
+# on OpenShift, where SCCs restrict it), use the sibling overlay
+# `with-otlp-url` instead and point OTEL_EXPORTER_OTLP_ENDPOINT at a
+# Service URL.
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: catalog
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_SERVICE_NAME
+          value: catalog
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4318"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_INSECURE
+          value: "true"
+  - target:
+      kind: Deployment
+      name: payment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_SERVICE_NAME
+          value: payment
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4318"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_INSECURE
+          value: "true"
+  - target:
+      kind: Deployment
+      name: cart
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_SERVICE_NAME
+          value: cart
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4318"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_INSECURE
+          value: "true"
+  - target:
+      kind: Deployment
+      name: images
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_SERVICE_NAME
+          value: images
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4318"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_INSECURE
+          value: "true"
+  - target:
+      kind: Deployment
+      name: shipping
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_SERVICE_NAME
+          value: shipping
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4318"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_INSECURE
+          value: "true"
+  - target:
+      kind: Deployment
+      name: recommendations
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_SERVICE_NAME
+          value: recommendations
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://$(HOST_IP):4318"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_INSECURE
+          value: "true"

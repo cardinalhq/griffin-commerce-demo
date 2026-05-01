@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: catalog
-        image: docker.flame.org/library/griffin-commerce-demo:latest
+        image: ghcr.io/cardinalhq/griffin-commerce-demo
         ports:
         - containerPort: 8080
         env:
@@ -24,16 +24,6 @@ spec:
           value: "catalog"
         - name: PORT
           value: "8080"
-        - name: HOST_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.hostIP
-        - name: OTEL_SERVICE_NAME
-          value: "catalog"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4318"
-        - name: OTEL_INSECURE
-          value: "true"
         resources:
           requests:
             memory: "128Mi"
@@ -41,6 +31,18 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
 ---
 apiVersion: v1
 kind: Service
@@ -72,7 +74,7 @@ spec:
     spec:
       containers:
       - name: payment
-        image: docker.flame.org/library/griffin-commerce-demo:latest
+        image: ghcr.io/cardinalhq/griffin-commerce-demo
         ports:
         - containerPort: 8081
         env:
@@ -80,16 +82,6 @@ spec:
           value: "payment"
         - name: PORT
           value: "8081"
-        - name: HOST_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.hostIP
-        - name: OTEL_SERVICE_NAME
-          value: "payment"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4318"
-        - name: OTEL_INSECURE
-          value: "true"
         resources:
           requests:
             memory: "128Mi"
@@ -97,6 +89,18 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
 ---
 apiVersion: v1
 kind: Service
@@ -128,7 +132,7 @@ spec:
     spec:
       containers:
       - name: cart
-        image: docker.flame.org/library/griffin-commerce-demo:latest
+        image: ghcr.io/cardinalhq/griffin-commerce-demo
         ports:
         - containerPort: 8082
         env:
@@ -138,16 +142,6 @@ spec:
           value: "8082"
         - name: CATALOG_SERVICE_URL
           value: "http://catalog:8080"
-        - name: HOST_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.hostIP
-        - name: OTEL_SERVICE_NAME
-          value: "cart"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4318"
-        - name: OTEL_INSECURE
-          value: "true"
         resources:
           requests:
             memory: "128Mi"
@@ -155,6 +149,18 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 5
+          periodSeconds: 5
 ---
 apiVersion: v1
 kind: Service
@@ -186,7 +192,7 @@ spec:
     spec:
       containers:
       - name: images
-        image: docker.flame.org/library/griffin-commerce-demo:latest
+        image: ghcr.io/cardinalhq/griffin-commerce-demo
         ports:
         - containerPort: 8083
         env:
@@ -194,16 +200,6 @@ spec:
           value: "images"
         - name: PORT
           value: "8083"
-        - name: HOST_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.hostIP
-        - name: OTEL_SERVICE_NAME
-          value: "images"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4318"
-        - name: OTEL_INSECURE
-          value: "true"
         resources:
           requests:
             memory: "256Mi"
@@ -211,6 +207,18 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "300m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8083
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8083
+          initialDelaySeconds: 5
+          periodSeconds: 5
 ---
 apiVersion: v1
 kind: Service
@@ -242,7 +250,7 @@ spec:
     spec:
       containers:
       - name: shipping
-        image: docker.flame.org/library/griffin-commerce-demo:latest
+        image: ghcr.io/cardinalhq/griffin-commerce-demo
         ports:
         - containerPort: 8084
         env:
@@ -250,16 +258,6 @@ spec:
           value: "shipping"
         - name: PORT
           value: "8084"
-        - name: HOST_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.hostIP
-        - name: OTEL_SERVICE_NAME
-          value: "shipping"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4318"
-        - name: OTEL_INSECURE
-          value: "true"
         resources:
           requests:
             memory: "128Mi"
@@ -267,6 +265,18 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8084
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8084
+          initialDelaySeconds: 5
+          periodSeconds: 5
 ---
 apiVersion: v1
 kind: Service
@@ -298,7 +308,7 @@ spec:
     spec:
       containers:
       - name: recommendations
-        image: docker.flame.org/library/griffin-commerce-demo:latest
+        image: ghcr.io/cardinalhq/griffin-commerce-demo
         ports:
         - containerPort: 8085
         env:
@@ -308,16 +318,6 @@ spec:
           value: "8085"
         - name: CATALOG_SERVICE_URL
           value: "http://catalog:8080"
-        - name: HOST_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.hostIP
-        - name: OTEL_SERVICE_NAME
-          value: "recommendations"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://$(HOST_IP):4318"
-        - name: OTEL_INSECURE
-          value: "true"
         resources:
           requests:
             memory: "128Mi"
@@ -325,6 +325,18 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8085
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8085
+          initialDelaySeconds: 5
+          periodSeconds: 5
 ---
 apiVersion: v1
 kind: Service

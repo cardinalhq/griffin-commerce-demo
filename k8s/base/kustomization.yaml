@@ -9,6 +9,10 @@ resources:
   - backend-services.yaml
   - ingress.yaml
 
+images:
+  - name: ghcr.io/cardinalhq/griffin-commerce-demo
+    newTag: v0.1.9
+
 patches:
   - target:
       kind: Deployment
