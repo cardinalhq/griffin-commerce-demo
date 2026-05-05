@@ -106,22 +106,17 @@ sanctioned pod network.
 ## Deploying on OpenShift
 
 The base manifests are restricted-PSA-clean (non-root, dropped caps,
-RuntimeDefault seccomp), but they pin `runAsUser: 65532` — outside any
-namespace's auto-assigned UID range. OpenShift's default `restricted-v2`
-SCC rejects that. After applying the overlay, grant the namespace's
-`default` ServiceAccount the `nonroot-v2` SCC, which permits any non-root
-UID:
+RuntimeDefault seccomp) and don't pin a specific UID, so OpenShift's
+default `restricted-v2` SCC will inject a UID from the namespace's
+auto-assigned range. No SCC rolebinding is required:
 
 ```sh
 kubectl apply -k k8s/overlays/with-otlp-url   # or k8s/base, etc.
-
-kubectl create rolebinding nonroot-v2-default \
-  --clusterrole=system:openshift:scc:nonroot-v2 \
-  --serviceaccount=griffin-commerce:default \
-  --namespace=griffin-commerce
 ```
 
-(Equivalent `oc` form: `oc adm policy add-scc-to-user nonroot-v2 -z default -n griffin-commerce`.)
+The image already runs cleanly as an arbitrary UID (nginx writes its
+PID and temp files under `/tmp`, logs to stdout/stderr, and binds to
+an unprivileged port).
 
 ### Browser access via a Route
 
