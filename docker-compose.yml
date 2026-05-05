@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Frontend - exposed to the public
   frontend:
-    image: docker.flame.org/library/griffin-commerce-demo:latest
+    image: public.ecr.aws/cardinalhq.io/griffin-commerce-demo:latest
     build: .
     ports:
       - "5173:5173"
@@ -23,7 +23,7 @@ services:
 
   # Backend services - internal only
   catalog:
-    image: docker.flame.org/library/griffin-commerce-demo:latest
+    image: public.ecr.aws/cardinalhq.io/griffin-commerce-demo:latest
     build: .
     environment:
       - SERVICE_NAME=catalog
@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
 
   payment:
-    image: docker.flame.org/library/griffin-commerce-demo:latest
+    image: public.ecr.aws/cardinalhq.io/griffin-commerce-demo:latest
     build: .
     environment:
       - SERVICE_NAME=payment
@@ -43,7 +43,7 @@ services:
     restart: unless-stopped
 
   cart:
-    image: docker.flame.org/library/griffin-commerce-demo:latest
+    image: public.ecr.aws/cardinalhq.io/griffin-commerce-demo:latest
     build: .
     environment:
       - SERVICE_NAME=cart
@@ -54,7 +54,7 @@ services:
     restart: unless-stopped
 
   images:
-    image: docker.flame.org/library/griffin-commerce-demo:latest
+    image: public.ecr.aws/cardinalhq.io/griffin-commerce-demo:latest
     build: .
     environment:
       - SERVICE_NAME=images
@@ -66,7 +66,7 @@ services:
     restart: unless-stopped
 
   shipping:
-    image: docker.flame.org/library/griffin-commerce-demo:latest
+    image: public.ecr.aws/cardinalhq.io/griffin-commerce-demo:latest
     build: .
     environment:
       - SERVICE_NAME=shipping
@@ -76,7 +76,7 @@ services:
     restart: unless-stopped
 
   recommendations:
-    image: docker.flame.org/library/griffin-commerce-demo:latest
+    image: public.ecr.aws/cardinalhq.io/griffin-commerce-demo:latest
     build: .
     environment:
       - SERVICE_NAME=recommendations
