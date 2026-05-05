@@ -105,18 +105,22 @@ sanctioned pod network.
 
 ## Deploying on OpenShift
 
-The base manifests are restricted-PSA-clean (non-root, dropped caps,
-RuntimeDefault seccomp) and don't pin a specific UID, so OpenShift's
-default `restricted-v2` SCC will inject a UID from the namespace's
-auto-assigned range. No SCC rolebinding is required:
+The install command is the same as on vanilla Kubernetes:
 
 ```sh
-kubectl apply -k k8s/overlays/with-otlp-url   # or k8s/base, etc.
+kubectl apply -k k8s/base                    # or any overlay
 ```
 
-The image already runs cleanly as an arbitrary UID (nginx writes its
-PID and temp files under `/tmp`, logs to stdout/stderr, and binds to
-an unprivileged port).
+No SCC rolebinding is required. The base manifests are restricted-PSA-clean
+(non-root, dropped caps, RuntimeDefault seccomp) and don't pin a specific
+UID, so OpenShift's default `restricted-v2` SCC injects a UID from the
+namespace's auto-assigned range. The image runs cleanly as that arbitrary
+UID — nginx writes its PID and temp files under `/tmp`, logs to
+stdout/stderr, and binds to an unprivileged port.
+
+The only OpenShift-specific step is browser ingress: the bundled
+`Ingress` won't auto-promote to a Route, so create one explicitly (next
+section).
 
 ### Browser access via a Route
 
@@ -154,7 +158,10 @@ Then point a browser at `https://griffin.apps.YOUR-CLUSTER-DOMAIN/`.
 - Every Deployment runs `replicas: 1`. This is a demo, not an HA reference;
   scale up if you actually want resilience.
 - The namespace enforces the `restricted` Pod Security Standard. The
-  manifests already comply (non-root UID 65532, dropped capabilities, no
-  privilege escalation, RuntimeDefault seccomp profile).
+  manifests already comply (non-root, dropped capabilities, no privilege
+  escalation, RuntimeDefault seccomp profile). No UID is pinned in the
+  pod spec; the image's baked-in `USER 65532` satisfies `runAsNonRoot`
+  on vanilla Kubernetes, and OpenShift's `restricted-v2` SCC injects a
+  UID from the namespace's auto-assigned range.
 - Backend services expose `/health` and have liveness + readiness probes
   wired to it.
