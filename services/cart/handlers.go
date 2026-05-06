@@ -9,8 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
+	"github.com/gorilla/mux"
 )
 
 // RegisterRoutes registers all HTTP routes
@@ -33,7 +34,7 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now(),
 	}
 	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
-		slog.Error("Failed to write health response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write health response", "error", err)
 	}
 }
 
@@ -42,49 +43,77 @@ type CreateCartRequest struct {
 	CustomerID string `json:"customer_id"`
 }
 
-// CreateCartHandler creates a new cart
+// CreateCartHandler creates a new cart.
 func CreateCartHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	statusCode := http.StatusCreated
+	defer func() {
+		faults.RecordCartOp(r.Context(), "create", statusCode, float64(time.Since(start).Milliseconds()))
+	}()
+
+	if maybeFailCartError(w, r, "create", &statusCode) {
+		return
+	}
+	faults.MaybeOutlier(r.Context(), faultsClient, "cart.outlier")
+
 	var req CreateCartRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		statusCode = http.StatusBadRequest
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrBadRequest, statusCode, correlationID)
 		return
 	}
 
 	if req.CustomerID == "" {
+		statusCode = http.StatusBadRequest
 		correlationID := common.GetCorrelationID(r.Context())
 		err := common.NewAppError("MISSING_CUSTOMER_ID", "Customer ID is required")
-		common.WriteErrorResponse(w, err, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, err, statusCode, correlationID)
 		return
 	}
 
 	cart, err := CreateCart(req.CustomerID)
 	if err != nil {
+		statusCode = http.StatusInternalServerError
 		correlationID := common.GetCorrelationID(r.Context())
 		appErr := common.NewAppError("CART_CREATION_FAILED", err.Error())
-		common.WriteErrorResponse(w, appErr, http.StatusInternalServerError, correlationID)
+		common.WriteErrorResponse(r.Context(), w, appErr, statusCode, correlationID)
 		return
 	}
 
 	if err := common.WriteJSONResponse(w, cart, http.StatusCreated); err != nil {
-		slog.Error("Failed to write cart response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write cart response", "error", err)
 	}
 }
 
-// GetCartHandler retrieves a cart
+// GetCartHandler retrieves a cart.
 func GetCartHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	statusCode := http.StatusOK
 	vars := mux.Vars(r)
 	cartID := vars["id"]
+	defer func() {
+		faults.RecordCartOp(r.Context(), "get", statusCode, float64(time.Since(start).Milliseconds()))
+	}()
+
+	if maybeFailCartError(w, r, "get", &statusCode) {
+		return
+	}
+	if maybeFailPoisonProduct(w, r, cartID, "get", &statusCode) {
+		return
+	}
+	faults.MaybeOutlier(r.Context(), faultsClient, "cart.outlier")
 
 	cart, err := GetCart(cartID)
 	if err != nil {
+		statusCode = http.StatusNotFound
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, statusCode, correlationID)
 		return
 	}
 
 	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
-		slog.Error("Failed to write cart response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write cart response", "error", err)
 	}
 }
 
@@ -94,59 +123,85 @@ type AddItemRequest struct {
 	Quantity  int    `json:"quantity"`
 }
 
-// AddItemHandler adds an item to the cart
+// AddItemHandler adds an item to the cart.
+// Fault hooks: cart.error, cart.poison-product (checked against cart's
+// pre-add state — adding the poison item itself succeeds the first time;
+// subsequent operations on the now-poisoned cart fail).
 func AddItemHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	statusCode := http.StatusOK
 	vars := mux.Vars(r)
 	cartID := vars["id"]
+	defer func() {
+		faults.RecordCartOp(r.Context(), "add", statusCode, float64(time.Since(start).Milliseconds()))
+	}()
+
+	if maybeFailCartError(w, r, "add", &statusCode) {
+		return
+	}
+	if maybeFailPoisonProduct(w, r, cartID, "add", &statusCode) {
+		return
+	}
+	faults.MaybeOutlier(r.Context(), faultsClient, "cart.outlier")
 
 	var req AddItemRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		statusCode = http.StatusBadRequest
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrBadRequest, statusCode, correlationID)
 		return
 	}
 
 	if req.ProductID == "" || req.Quantity <= 0 {
+		statusCode = http.StatusBadRequest
 		correlationID := common.GetCorrelationID(r.Context())
 		err := common.NewAppError("INVALID_REQUEST", "Product ID and positive quantity are required")
-		common.WriteErrorResponse(w, err, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, err, statusCode, correlationID)
 		return
 	}
 
 	if err := AddItemToCart(r.Context(), cartID, req.ProductID, req.Quantity); err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
-
-		// Determine appropriate error response
-		statusCode := http.StatusInternalServerError
+		statusCode = http.StatusInternalServerError
 		appErr := common.NewAppError("ADD_ITEM_FAILED", err.Error())
 
-		// If product not found, return 404
 		if err.Error() == "product not found" {
 			statusCode = http.StatusNotFound
 			appErr = common.ErrNotFound
 		}
 
-		common.WriteErrorResponse(w, appErr, statusCode, correlationID)
+		common.WriteErrorResponse(r.Context(), w, appErr, statusCode, correlationID)
 		return
 	}
 
 	// Return updated cart
 	cart, _ := GetCart(cartID)
 	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
-		slog.Error("Failed to write cart response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write cart response", "error", err)
 	}
 }
 
-// RemoveItemHandler removes an item from the cart
+// RemoveItemHandler removes an item from the cart.
+// We deliberately do NOT apply cart.poison-product here so operators can
+// remove the poison item to recover.
 func RemoveItemHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	statusCode := http.StatusOK
 	vars := mux.Vars(r)
 	cartID := vars["id"]
 	productID := vars["productId"]
+	defer func() {
+		faults.RecordCartOp(r.Context(), "remove", statusCode, float64(time.Since(start).Milliseconds()))
+	}()
+
+	if maybeFailCartError(w, r, "remove", &statusCode) {
+		return
+	}
+	faults.MaybeOutlier(r.Context(), faultsClient, "cart.outlier")
 
 	if err := RemoveItemFromCart(cartID, productID); err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
-
-		statusCode := http.StatusInternalServerError
+		statusCode = http.StatusInternalServerError
 		appErr := common.NewAppError("REMOVE_ITEM_FAILED", err.Error())
 
 		if err.Error() == "cart not found" || err.Error() == "item not found in cart" {
@@ -154,14 +209,13 @@ func RemoveItemHandler(w http.ResponseWriter, r *http.Request) {
 			appErr = common.ErrNotFound
 		}
 
-		common.WriteErrorResponse(w, appErr, statusCode, correlationID)
+		common.WriteErrorResponse(r.Context(), w, appErr, statusCode, correlationID)
 		return
 	}
 
-	// Return updated cart
 	cart, _ := GetCart(cartID)
 	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
-		slog.Error("Failed to write cart response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write cart response", "error", err)
 	}
 }
 
@@ -174,27 +228,37 @@ type CheckoutResponse struct {
 	Message    string  `json:"message"`
 }
 
-// CheckoutHandler initiates checkout for a cart
+// CheckoutHandler initiates checkout for a cart.
 func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	statusCode := http.StatusOK
 	vars := mux.Vars(r)
 	cartID := vars["id"]
+	defer func() {
+		faults.RecordCartOp(r.Context(), "checkout", statusCode, float64(time.Since(start).Milliseconds()))
+	}()
+
+	if maybeFailCartError(w, r, "checkout", &statusCode) {
+		return
+	}
+	faults.MaybeOutlier(r.Context(), faultsClient, "cart.outlier")
 
 	cart, err := GetCart(cartID)
 	if err != nil {
+		statusCode = http.StatusNotFound
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, statusCode, correlationID)
 		return
 	}
 
 	if len(cart.Items) == 0 {
+		statusCode = http.StatusBadRequest
 		correlationID := common.GetCorrelationID(r.Context())
 		err := common.NewAppError("EMPTY_CART", "Cannot checkout an empty cart")
-		common.WriteErrorResponse(w, err, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, err, statusCode, correlationID)
 		return
 	}
 
-	// In a real implementation, this would trigger the checkout process
-	// For now, just return cart details
 	response := CheckoutResponse{
 		CartID:     cart.ID,
 		CustomerID: cart.CustomerID,
@@ -204,36 +268,46 @@ func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
-		slog.Error("Failed to write checkout response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write checkout response", "error", err)
 	}
 }
 
-// ClearCartHandler clears all items from a cart
+// ClearCartHandler clears all items from a cart.
 func ClearCartHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	statusCode := http.StatusOK
 	vars := mux.Vars(r)
 	cartID := vars["id"]
+	defer func() {
+		faults.RecordCartOp(r.Context(), "clear", statusCode, float64(time.Since(start).Milliseconds()))
+	}()
+
+	if maybeFailCartError(w, r, "clear", &statusCode) {
+		return
+	}
+	faults.MaybeOutlier(r.Context(), faultsClient, "cart.outlier")
 
 	cart, err := GetCart(cartID)
 	if err != nil {
+		statusCode = http.StatusNotFound
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, statusCode, correlationID)
 		return
 	}
 
-	// Clear all items
 	cart.Items = []common.CartItem{}
 	cart.Total = 0
 	cart.UpdatedAt = time.Now()
 
-	// Save the cleared cart
 	if err := cartDB.Set(cart.ID, cart); err != nil {
+		statusCode = http.StatusInternalServerError
 		correlationID := common.GetCorrelationID(r.Context())
 		appErr := common.NewAppError("CLEAR_FAILED", "Failed to clear cart")
-		common.WriteErrorResponse(w, appErr, http.StatusInternalServerError, correlationID)
+		common.WriteErrorResponse(r.Context(), w, appErr, statusCode, correlationID)
 		return
 	}
 
 	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
-		slog.Error("Failed to write cart response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write cart response", "error", err)
 	}
 }

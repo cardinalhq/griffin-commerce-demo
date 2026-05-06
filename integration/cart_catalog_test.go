@@ -115,13 +115,13 @@ func setupCatalogService(t *testing.T, router *mux.Router) {
 
 		data, err := productDB.Get(productID)
 		if err != nil {
-			common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, "")
+			common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, http.StatusNotFound, "")
 			return
 		}
 
 		product, ok := data.(common.Product)
 		if !ok {
-			common.WriteErrorResponse(w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
+			common.WriteErrorResponse(r.Context(), w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
 			return
 		}
 
@@ -179,7 +179,7 @@ func setupCartService(router *mux.Router, catalogURL string) {
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			common.WriteErrorResponse(w, common.ErrBadRequest, http.StatusBadRequest, "")
+			common.WriteErrorResponse(r.Context(), w, common.ErrBadRequest, http.StatusBadRequest, "")
 			return
 		}
 
@@ -191,7 +191,7 @@ func setupCartService(router *mux.Router, catalogURL string) {
 		}
 
 		if err := cartDB.Set(cart.ID, cart); err != nil {
-			common.WriteErrorResponse(w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
+			common.WriteErrorResponse(r.Context(), w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
 			return
 		}
 
@@ -206,13 +206,13 @@ func setupCartService(router *mux.Router, catalogURL string) {
 
 		data, err := cartDB.Get(cartID)
 		if err != nil {
-			common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, "")
+			common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, http.StatusNotFound, "")
 			return
 		}
 
 		cartData, ok := data.(common.Cart)
 		if !ok {
-			common.WriteErrorResponse(w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
+			common.WriteErrorResponse(r.Context(), w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
 			return
 		}
 		cart := cartData
@@ -232,25 +232,25 @@ func setupCartService(router *mux.Router, catalogURL string) {
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			common.WriteErrorResponse(w, common.ErrBadRequest, http.StatusBadRequest, "")
+			common.WriteErrorResponse(r.Context(), w, common.ErrBadRequest, http.StatusBadRequest, "")
 			return
 		}
 
 		if req.ProductID == "" || req.Quantity <= 0 {
-			common.WriteErrorResponse(w, common.ErrBadRequest, http.StatusBadRequest, "")
+			common.WriteErrorResponse(r.Context(), w, common.ErrBadRequest, http.StatusBadRequest, "")
 			return
 		}
 
 		// Get cart
 		data, err := cartDB.Get(cartID)
 		if err != nil {
-			common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, "")
+			common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, http.StatusNotFound, "")
 			return
 		}
 
 		cartData, ok := data.(common.Cart)
 		if !ok {
-			common.WriteErrorResponse(w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
+			common.WriteErrorResponse(r.Context(), w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
 			return
 		}
 		cart := cartData
@@ -259,9 +259,9 @@ func setupCartService(router *mux.Router, catalogURL string) {
 		product, err := getProduct(req.ProductID)
 		if err != nil {
 			if err == common.ErrNotFound {
-				common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, "")
+				common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, http.StatusNotFound, "")
 			} else {
-				common.WriteErrorResponse(w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
+				common.WriteErrorResponse(r.Context(), w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
 			}
 			return
 		}
@@ -298,7 +298,7 @@ func setupCartService(router *mux.Router, catalogURL string) {
 
 		// Save cart
 		if err := cartDB.Set(cart.ID, cart); err != nil {
-			common.WriteErrorResponse(w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
+			common.WriteErrorResponse(r.Context(), w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
 			return
 		}
 
@@ -315,13 +315,13 @@ func setupCartService(router *mux.Router, catalogURL string) {
 		// Get cart
 		data, err := cartDB.Get(cartID)
 		if err != nil {
-			common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, "")
+			common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, http.StatusNotFound, "")
 			return
 		}
 
 		cartData, ok := data.(common.Cart)
 		if !ok {
-			common.WriteErrorResponse(w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
+			common.WriteErrorResponse(r.Context(), w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
 			return
 		}
 		cart := cartData
@@ -343,7 +343,7 @@ func setupCartService(router *mux.Router, catalogURL string) {
 
 		// Save cart
 		if err := cartDB.Set(cart.ID, cart); err != nil {
-			common.WriteErrorResponse(w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
+			common.WriteErrorResponse(r.Context(), w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
 			return
 		}
 
@@ -359,13 +359,13 @@ func setupCartService(router *mux.Router, catalogURL string) {
 		// Get cart
 		data, err := cartDB.Get(cartID)
 		if err != nil {
-			common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, "")
+			common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, http.StatusNotFound, "")
 			return
 		}
 
 		cartData, ok := data.(common.Cart)
 		if !ok {
-			common.WriteErrorResponse(w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
+			common.WriteErrorResponse(r.Context(), w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
 			return
 		}
 		cart := cartData
@@ -376,7 +376,7 @@ func setupCartService(router *mux.Router, catalogURL string) {
 
 		// Save cart
 		if err := cartDB.Set(cart.ID, cart); err != nil {
-			common.WriteErrorResponse(w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
+			common.WriteErrorResponse(r.Context(), w, common.NewAppError("INTERNAL_ERROR", "Internal server error"), http.StatusInternalServerError, "")
 			return
 		}
 

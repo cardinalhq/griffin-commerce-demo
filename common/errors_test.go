@@ -4,6 +4,7 @@
 package common
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
@@ -25,7 +26,7 @@ func TestWriteErrorResponse(t *testing.T) {
 	rec := httptest.NewRecorder()
 	err := NewAppError("TEST_ERROR", "Test error message")
 
-	WriteErrorResponse(rec, err, 400, "test-correlation-id")
+	WriteErrorResponse(context.Background(), rec, err, 400, "test-correlation-id")
 
 	if rec.Code != 400 {
 		t.Errorf("Expected status code 400, got %d", rec.Code)

@@ -49,7 +49,7 @@ func GetProduct(ctx context.Context, productID string) (*common.Product, error) 
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			slog.Warn("Failed to close response body", "error", err)
+			slog.WarnContext(ctx, "Failed to close response body", "error", err)
 		}
 	}()
 

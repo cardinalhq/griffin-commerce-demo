@@ -4,6 +4,7 @@
 package payment
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
 	"gopkg.in/yaml.v3"
 )
 
@@ -62,9 +64,15 @@ func LoadProcessorConfig(path string) error {
 	return nil
 }
 
-// ProcessPayment processes a payment with a specific processor
-func ProcessPayment(orderID string, amount float64, processorName string) (*common.Transaction, error) {
-	// Select processor
+// ProcessPayment processes a payment with a specific processor.
+// Fault-injection: payment.fail overrides the processor's effective failure
+// rate when the knob's Target matches the chosen processor (or is empty,
+// in which case the override applies to whichever processor was picked).
+// Always emits griffin.payment.charges_total{processor, status} and the
+// duration histogram.
+func ProcessPayment(ctx context.Context, orderID string, amount float64, processorName string) (*common.Transaction, error) {
+	start := time.Now()
+
 	if processorName == "" {
 		processorName = selectRandomProcessor()
 	}
@@ -86,10 +94,30 @@ func ProcessPayment(orderID string, amount float64, processorName string) (*comm
 		CreatedAt: time.Now(),
 	}
 
-	// Determine if payment should fail based on failure rate
-	if shouldFail(processor.FailureRate) {
+	// Compute the effective failure rate. payment.fail with matching Target
+	// (or empty Target) overrides the YAML default. We don't mutate the
+	// processors map — the override is recomputed each call so clearing the
+	// knob restores the YAML rate without explicit reset logic.
+	failureRate := processor.FailureRate
+	if k := faultsClient.Active(); k != nil && k.Key == "payment.fail" {
+		if k.Target == "" || k.Target == processorName {
+			failureRate = k.Probability
+			faults.Record(ctx, k, 0)
+		}
+	}
+
+	if shouldFail(failureRate) {
 		transaction.Status = "failed"
 		transaction.Message = getFailureMessage()
+		slog.ErrorContext(ctx, "payment processor rejected charge",
+			"processor", processorName,
+			"processor_name", processor.Name,
+			"order_id", orderID,
+			"amount", amount,
+			"reason", transaction.Message,
+			"effective_failure_rate", failureRate,
+			"baseline_failure_rate", processor.FailureRate,
+		)
 	} else {
 		transaction.Status = "success"
 		transaction.Message = "Payment processed successfully"
@@ -99,6 +127,9 @@ func ProcessPayment(orderID string, amount float64, processorName string) (*comm
 	if err := transactionDB.Set(transaction.ID, transaction); err != nil {
 		return nil, fmt.Errorf("failed to store transaction: %w", err)
 	}
+
+	durationMs := float64(time.Since(start).Milliseconds())
+	faults.RecordPaymentCharge(ctx, processorName, transaction.Status, durationMs)
 
 	return transaction, nil
 }

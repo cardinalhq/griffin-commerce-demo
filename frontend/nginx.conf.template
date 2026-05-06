@@ -37,11 +37,24 @@ http {
 
     location /api/products        { proxy_pass http://catalog:8080; }
     location /api/payments        { proxy_pass http://payment:8081; }
-    location /api/cart            { proxy_pass http://cart:8082; }
+    location /api/cart            {
+      proxy_pass http://cart:8082;
+      proxy_read_timeout 60s;
+      proxy_send_timeout 60s;
+    }
     location /api/images          { proxy_pass http://images:8083; }
     location /api/shipping        { proxy_pass http://shipping:8084; }
     location /api/recommendations { proxy_pass http://recommendations:8085; }
     location /static              { proxy_pass http://images:8083; }
+    # Fault-injection control plane. SSE-friendly: long timeout, no buffering.
+    location /admin/faults {
+      proxy_pass http://controlplane:8086;
+      proxy_buffering off;
+      proxy_cache off;
+      proxy_read_timeout 1h;
+      proxy_send_timeout 1h;
+      chunked_transfer_encoding on;
+    }
 
     location / {
       try_files $uri $uri/ /index.html;

@@ -8,8 +8,18 @@
   import ProductImage from './lib/components/ProductImage.svelte';
   import Recommendations from './lib/components/Recommendations.svelte';
   import Toast from './lib/components/Toast.svelte';
+  import ActiveFaultBanner from './lib/components/ActiveFaultBanner.svelte';
+  import FaultsAdmin from './lib/components/FaultsAdmin.svelte';
   import { cart } from './lib/stores/cart';
   import { toasts } from './lib/stores/toast';
+
+  // Path-based routing without SvelteKit. /chaos shows the fault-injection
+  // admin UI; everything else is the storefront. We use /chaos rather than
+  // /admin/faults to avoid colliding with the proxy entry that forwards
+  // /admin/faults* to the control plane API.
+  let route = window.location.pathname;
+  window.addEventListener('popstate', () => { route = window.location.pathname; });
+  $: isAdminRoute = route.startsWith('/chaos');
 
   interface Product {
     id: string;
@@ -94,7 +104,12 @@
 
 <div class="min-h-screen bg-gray-50">
   <Header />
+  <ActiveFaultBanner />
 
+  {#if isAdminRoute}
+    <FaultsAdmin />
+    <Toast />
+  {:else}
   <!-- Main Content -->
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Search and Filter Bar -->
@@ -238,8 +253,10 @@
       <Recommendations on:select={(e) => openProductDetail(e.detail)} />
     {/if}
   </main>
+  {/if}
 </div>
 
-<ProductDetail bind:show={showProductDetail} product={selectedProduct} />
-
-<Toast />
+{#if !isAdminRoute}
+  <ProductDetail bind:show={showProductDetail} product={selectedProduct} />
+  <Toast />
+{/if}

@@ -22,6 +22,7 @@
 
       <nav class="flex items-center space-x-6">
         <a href="/" class="text-gray-600 hover:text-gray-900">Products</a>
+        <a href="/chaos" class="text-amber-600 hover:text-amber-800 font-medium" title="Fault injection admin">⚠ Chaos</a>
 
         <button
           on:click={() => showCart = !showCart}

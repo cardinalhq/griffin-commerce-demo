@@ -15,8 +15,12 @@ import (
 	"time"
 
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
 	"github.com/gorilla/mux"
 )
+
+// faultsClient is the package-level fault-injection polling client.
+var faultsClient *faults.Client
 
 // ImageInfo contains image details
 type ImageInfo struct {
@@ -52,14 +56,38 @@ func Start() error {
 	// Compute hashes for all images on startup
 	computeImageHashes()
 
+	// Wire fault-injection client.
+	cpuBurn := faults.NewCPUBurnController()
+	faultsClient = faults.NewClient(faults.ClientOpts{
+		URL:     os.Getenv("CONTROLPLANE_URL"),
+		Service: faults.ServiceImages,
+		OnActivate: func(ctx context.Context, k *faults.Knob) {
+			if k.Key == "global.cpu-burn-bg" {
+				cpuBurn.Start(ctx, k)
+			}
+		},
+		OnClear: func(ctx context.Context, k *faults.Knob) {
+			if k.Key == "global.cpu-burn-bg" {
+				cpuBurn.Stop(ctx)
+			}
+		},
+	})
+	faultsClient.Start(ctx)
+
 	// Create router
 	r := mux.NewRouter()
 
-	// Apply middleware
+	// Apply middleware. TracingMiddleware outermost so LoggingMiddleware
+	// sees the otelhttp span context (gives HTTP Request log trace_id).
+	r.Use(common.TracingMiddleware("image-service"))
 	r.Use(common.LoggingMiddleware)
 	r.Use(common.CorrelationIDMiddleware)
-	r.Use(common.TracingMiddleware("image-service"))
 	r.Use(common.CORSMiddleware)
+	r.Use(faults.Middleware(faultsClient))
+	// images.slow + Cache-Control: no-store while active so browser
+	// reloads always hit the slow path. Applies to both the API mapping
+	// endpoint and /static/* file serves.
+	r.Use(imagesSlowMiddleware(faultsClient))
 
 	// Health check
 	r.HandleFunc("/health", HealthHandler).Methods("GET")
@@ -123,6 +151,23 @@ func getPort() int {
 	return 8083
 }
 
+// imagesSlowMiddleware sleeps for k.LatencyMs when images.slow is active
+// AND sets Cache-Control: no-store on every response so browser reloads
+// always hit the slow path. This is the demo-required fidelity detail —
+// without no-store, browser cache masks the slow knob.
+func imagesSlowMiddleware(c *faults.Client) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if k, fired := faults.Probe(c, "images.slow"); fired && k.LatencyMs > 0 {
+				time.Sleep(time.Duration(k.LatencyMs) * time.Millisecond)
+				faults.Record(r.Context(), k, float64(k.LatencyMs))
+				w.Header().Set("Cache-Control", "no-store")
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // HealthHandler returns service health status
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	health := common.HealthResponse{
@@ -132,7 +177,7 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now(),
 	}
 	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
-		slog.Error("Failed to write response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
 }
 
@@ -163,7 +208,7 @@ func GetProductImageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
-		slog.Error("Failed to write response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
 }
 

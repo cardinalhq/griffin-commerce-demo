@@ -21,6 +21,23 @@ services:
     networks:
       - griffin-network
 
+  # Fault-injection control plane. Holds the single active knob.
+  # GRIFFIN_ADMIN_ENABLED gates mutation endpoints; defaults to false so a
+  # compose stack started without explicit opt-in can't be poked. Set
+  # GRIFFIN_ADMIN_ENABLED=true (or compose --env) to enable fault injection.
+  controlplane:
+    image: public.ecr.aws/cardinalhq.io/griffin-commerce-demo:latest
+    build: .
+    ports:
+      - "8086:8086"
+    environment:
+      - SERVICE_NAME=controlplane
+      - PORT=8086
+      - GRIFFIN_ADMIN_ENABLED=${GRIFFIN_ADMIN_ENABLED:-false}
+    networks:
+      - griffin-network
+    restart: unless-stopped
+
   # Backend services - internal only
   catalog:
     image: public.ecr.aws/cardinalhq.io/griffin-commerce-demo:latest
@@ -28,6 +45,7 @@ services:
     environment:
       - SERVICE_NAME=catalog
       - PORT=8080
+      - CONTROLPLANE_URL=http://controlplane:8086
     networks:
       - griffin-network
     restart: unless-stopped
@@ -38,6 +56,7 @@ services:
     environment:
       - SERVICE_NAME=payment
       - PORT=8081
+      - CONTROLPLANE_URL=http://controlplane:8086
     networks:
       - griffin-network
     restart: unless-stopped
@@ -49,6 +68,7 @@ services:
       - SERVICE_NAME=cart
       - PORT=8082
       - CATALOG_SERVICE_URL=http://catalog:8080
+      - CONTROLPLANE_URL=http://controlplane:8086
     networks:
       - griffin-network
     restart: unless-stopped
@@ -59,6 +79,7 @@ services:
     environment:
       - SERVICE_NAME=images
       - PORT=8083
+      - CONTROLPLANE_URL=http://controlplane:8086
     volumes:
       - ./services/images/static:/app/services/images/static:ro
     networks:
@@ -71,6 +92,7 @@ services:
     environment:
       - SERVICE_NAME=shipping
       - PORT=8084
+      - CONTROLPLANE_URL=http://controlplane:8086
     networks:
       - griffin-network
     restart: unless-stopped
@@ -82,6 +104,7 @@ services:
       - SERVICE_NAME=recommendations
       - PORT=8085
       - CATALOG_SERVICE_URL=http://catalog:8080
+      - CONTROLPLANE_URL=http://controlplane:8086
     networks:
       - griffin-network
     restart: unless-stopped
@@ -96,9 +119,11 @@ services:
       - LOCUST_USERS=${LOCUST_USERS:-10}
       - LOCUST_SPAWN_RATE=${LOCUST_SPAWN_RATE:-1}
       - LOCUST_RUN_TIME=${LOCUST_RUN_TIME:-60s}
+      - LOCUST_FLOOD_MAX_USERS=${LOCUST_FLOOD_MAX_USERS:-500}
       - NORMAL_USER_PCT=${NORMAL_USER_PCT:-60}
       - MOBILE_USER_PCT=${MOBILE_USER_PCT:-30}
       - POWER_USER_PCT=${POWER_USER_PCT:-10}
+      - CONTROLPLANE_URL=http://controlplane:8086
     command: >
       locust
       -f /loadgen/locustfile.py

@@ -153,6 +153,34 @@ EOF
 
 Then point a browser at `https://griffin.apps.YOUR-CLUSTER-DOMAIN/`.
 
+## Chaos overlay (fault injection)
+
+`overlays/chaos` adds the fault-injection control plane and wires every
+backend to it. Apply on top of (or instead of) the OTLP overlays:
+
+```sh
+kubectl apply -k k8s/overlays/chaos
+```
+
+This adds:
+
+- A single-replica `controlplane` Deployment + Service on `:8086` with
+  `GRIFFIN_ADMIN_ENABLED=true`. Single replica is required — state is
+  in-memory; horizontal scale would split the single-knob invariant.
+- `CONTROLPLANE_URL=http://controlplane:8086` on every backend so their
+  faults clients poll for the active knob.
+- `OTEL_METRIC_EXPORT_INTERVAL=10000` so 5-minute window comparisons in
+  `detect_anomalies` have ≥ 30 samples per series.
+- `RECS_REFRESH_INTERVAL=30s` on recommendations so the catalog → recs
+  cascade is visible promptly.
+
+The admin UI is at `<frontend>/chaos`. The full per-knob playbook for
+demoing against Conductor's `detect_anomalies` / `detect_outliers` is in
+`docs/demo/conductor-detection.md`.
+
+**Do not apply this overlay in production.** `GRIFFIN_ADMIN_ENABLED=true`
+means anyone who can reach the control plane Service can inject faults.
+
 ## Notes
 
 - Every Deployment runs `replicas: 1`. This is a demo, not an HA reference;

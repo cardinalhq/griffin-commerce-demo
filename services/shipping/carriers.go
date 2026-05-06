@@ -4,12 +4,14 @@
 package shipping
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 	"sync"
 	"time"
 
+	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
 	"gopkg.in/yaml.v3"
 )
 
@@ -95,7 +97,7 @@ func GetCarriers() []CarrierConfig {
 	return result
 }
 
-func CreateShipment(orderID string, carrierID string) (*Shipment, error) {
+func CreateShipment(ctx context.Context, orderID string, carrierID string) (*Shipment, error) {
 	carriersMutex.RLock()
 	carrier, exists := carriers[carrierID]
 	carriersMutex.RUnlock()
@@ -114,14 +116,32 @@ func CreateShipment(orderID string, carrierID string) (*Shipment, error) {
 			carriersMutex.RLock()
 			carrier = carriers[carrierID]
 			carriersMutex.RUnlock()
-			log.Printf("Selected random carrier: %s", carrierID)
+			slog.InfoContext(ctx, "Selected random carrier", "carrier", carrierID)
 		} else {
 			return nil, fmt.Errorf("no carriers available")
 		}
 	}
 
-	if rand.Float64() < carrier.FailureRate {
-		log.Printf("Shipping failed with %s (%.0f%% failure rate)", carrierID, carrier.FailureRate*100)
+	// Compute the effective failure rate. shipping.fail with matching Target
+	// (or empty Target) overrides the YAML default. Per-call recompute so
+	// clearing the knob restores baseline without explicit reset logic.
+	failureRate := carrier.FailureRate
+	if k := faultsClient.Active(); k != nil && k.Key == "shipping.fail" {
+		if k.Target == "" || k.Target == carrierID {
+			failureRate = k.Probability
+			faults.Record(ctx, k, 0)
+		}
+	}
+
+	if rand.Float64() < failureRate {
+		slog.ErrorContext(ctx, "Shipping failed",
+			"carrier", carrierID,
+			"carrier_name", carrier.Name,
+			"effective_failure_rate", failureRate,
+			"baseline_failure_rate", carrier.FailureRate,
+			"order_id", orderID,
+		)
+		faults.RecordShipment(ctx, carrierID, "failed")
 		return &Shipment{
 			ID:          generateShipmentID(),
 			OrderID:     orderID,
@@ -149,7 +169,13 @@ func CreateShipment(orderID string, carrierID string) (*Shipment, error) {
 	shipments[shipment.ID] = shipment
 	shipmentsMutex.Unlock()
 
-	log.Printf("Shipment created: %s via %s", shipment.ID, carrier.Name)
+	slog.InfoContext(ctx, "Shipment created",
+		"shipment_id", shipment.ID,
+		"carrier", carrierID,
+		"carrier_name", carrier.Name,
+		"order_id", orderID,
+	)
+	faults.RecordShipment(ctx, carrierID, "shipped")
 	return shipment, nil
 }
 
