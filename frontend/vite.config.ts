@@ -20,11 +20,6 @@ export default defineConfig({
         target: 'http://localhost:8081',
         changeOrigin: true
       },
-      // Proxy cart service
-      '/api/cart': {
-        target: 'http://localhost:8082',
-        changeOrigin: true
-      },
       // Proxy images service - both API and static files
       '/api/images': {
         target: 'http://localhost:8083',
@@ -43,6 +38,22 @@ export default defineConfig({
       '/api/recommendations': {
         target: 'http://localhost:8085',
         changeOrigin: true
+      },
+      // Proxy fault-injection control plane. proxyTimeout long enough for
+      // SSE streams (/admin/faults/events) and the 30s cart.outlier knob
+      // not to be truncated.
+      '/admin/faults': {
+        target: 'http://localhost:8086',
+        changeOrigin: true,
+        proxyTimeout: 60_000,
+        timeout: 60_000
+      },
+      // Match the cart.outlier 30s sleep without the proxy cutting us off.
+      '/api/cart': {
+        target: 'http://localhost:8082',
+        changeOrigin: true,
+        proxyTimeout: 60_000,
+        timeout: 60_000
       }
     }
   }

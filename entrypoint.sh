@@ -33,9 +33,12 @@ case "$SERVICE_NAME" in
   recommendations)
     PORT=${PORT:-8085} /app/bin/griffin recommendations
     ;;
+  controlplane)
+    PORT=${PORT:-8086} /app/bin/griffin controlplane
+    ;;
   *)
     echo "Unknown service: $SERVICE_NAME"
-    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations"
+    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane"
     exit 1
     ;;
 esac

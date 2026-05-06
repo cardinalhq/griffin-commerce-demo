@@ -23,7 +23,9 @@ export default defineConfig({
       },
       '/api/cart': {
         target: 'http://cart:8082',
-        changeOrigin: true
+        changeOrigin: true,
+        proxyTimeout: 60_000,
+        timeout: 60_000
       },
       '/api/images': {
         target: 'http://images:8083',
@@ -40,6 +42,12 @@ export default defineConfig({
       '/api/recommendations': {
         target: 'http://recommendations:8085',
         changeOrigin: true
+      },
+      '/admin/faults': {
+        target: 'http://controlplane:8086',
+        changeOrigin: true,
+        proxyTimeout: 60_000,
+        timeout: 60_000
       }
     }
   }

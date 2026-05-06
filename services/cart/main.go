@@ -12,8 +12,13 @@ import (
 	"time"
 
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
 	"github.com/gorilla/mux"
 )
+
+// faultsClient is the package-level fault-injection polling client used by
+// cart's request handlers. Initialized in Start().
+var faultsClient *faults.Client
 
 func Start() error {
 	// Initialize telemetry with context
@@ -37,14 +42,39 @@ func Start() error {
 	}
 	InitProductClient(catalogURL)
 
+	// Wire fault-injection client.
+	cpuBurn := faults.NewCPUBurnController()
+	faultsClient = faults.NewClient(faults.ClientOpts{
+		URL:     os.Getenv("CONTROLPLANE_URL"),
+		Service: faults.ServiceCart,
+		OnActivate: func(ctx context.Context, k *faults.Knob) {
+			if k.Key == "global.cpu-burn-bg" {
+				cpuBurn.Start(ctx, k)
+			}
+		},
+		OnClear: func(ctx context.Context, k *faults.Knob) {
+			if k.Key == "global.cpu-burn-bg" {
+				cpuBurn.Stop(ctx)
+			}
+		},
+	})
+	faultsClient.Start(ctx)
+
 	// Create router
 	r := mux.NewRouter()
 
-	// Apply middleware
+	// Apply middleware. TracingMiddleware must be outermost so that
+	// LoggingMiddleware sees a request whose context already carries the
+	// otelhttp span — that's how the HTTP Request log line acquires
+	// trace_id/span_id.
+	r.Use(common.TracingMiddleware("cart-service"))
 	r.Use(common.LoggingMiddleware)
 	r.Use(common.CorrelationIDMiddleware)
-	r.Use(common.TracingMiddleware("cart-service"))
 	r.Use(common.CORSMiddleware)
+	// Generic middleware handles global knobs only. cart.error / cart.outlier
+	// / cart.poison-product live at handler level so per-operation metric
+	// labels still get emitted on the failure path.
+	r.Use(faults.Middleware(faultsClient))
 
 	// Register routes
 	RegisterRoutes(r)

@@ -32,7 +32,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 
 		// Log the request
 		duration := time.Since(start)
-		slog.Info("HTTP Request",
+		slog.InfoContext(r.Context(), "HTTP Request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", wrapped.statusCode,
@@ -112,6 +112,16 @@ func (rw *responseWriter) Write(data []byte) (int, error) {
 		rw.WriteHeader(http.StatusOK)
 	}
 	return rw.ResponseWriter.Write(data)
+}
+
+// Flush forwards to the underlying ResponseWriter when it implements
+// http.Flusher. Required so the control plane's SSE stream
+// (/admin/faults/events) can flush events through the LoggingMiddleware
+// wrapper.
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // ChainMiddleware chains multiple middleware functions

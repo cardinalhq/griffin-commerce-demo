@@ -12,8 +12,13 @@ import (
 	"time"
 
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
 	"github.com/gorilla/mux"
 )
+
+// faultsClient is the package-level fault-injection polling client used by
+// payment's processor. Initialized in Start().
+var faultsClient *faults.Client
 
 func Start() error {
 	// Initialize telemetry with context
@@ -36,14 +41,41 @@ func Start() error {
 	// Initialize transaction storage
 	InitTransactionStorage()
 
+	// Wire fault-injection client.
+	cpuBurn := faults.NewCPUBurnController()
+	gcStorm := newGCStormController()
+	faultsClient = faults.NewClient(faults.ClientOpts{
+		URL:     os.Getenv("CONTROLPLANE_URL"),
+		Service: faults.ServicePayment,
+		OnActivate: func(ctx context.Context, k *faults.Knob) {
+			switch k.Key {
+			case "global.cpu-burn-bg":
+				cpuBurn.Start(ctx, k)
+			case "payment.gc-storm":
+				gcStorm.Start(ctx, k.LatencyMs)
+			}
+		},
+		OnClear: func(ctx context.Context, k *faults.Knob) {
+			switch k.Key {
+			case "global.cpu-burn-bg":
+				cpuBurn.Stop(ctx)
+			case "payment.gc-storm":
+				gcStorm.Stop(ctx)
+			}
+		},
+	})
+	faultsClient.Start(ctx)
+
 	// Create router
 	r := mux.NewRouter()
 
-	// Apply middleware
+	// Apply middleware. TracingMiddleware outermost so LoggingMiddleware
+	// sees the otelhttp span context (gives HTTP Request log trace_id).
+	r.Use(common.TracingMiddleware("payment-service"))
 	r.Use(common.LoggingMiddleware)
 	r.Use(common.CorrelationIDMiddleware)
-	r.Use(common.TracingMiddleware("payment-service"))
 	r.Use(common.CORSMiddleware)
+	r.Use(faults.Middleware(faultsClient))
 
 	// Register routes
 	RegisterRoutes(r)

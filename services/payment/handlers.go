@@ -29,7 +29,7 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now(),
 	}
 	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
-		slog.Error("Failed to write health response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write health response", "error", err)
 	}
 }
 
@@ -56,7 +56,7 @@ func ChargeHandler(w http.ResponseWriter, r *http.Request) {
 	var req ChargeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
 		return
 	}
 
@@ -64,16 +64,16 @@ func ChargeHandler(w http.ResponseWriter, r *http.Request) {
 	if req.OrderID == "" || req.Amount <= 0 {
 		correlationID := common.GetCorrelationID(r.Context())
 		err := common.NewAppError("INVALID_REQUEST", "Order ID and positive amount are required")
-		common.WriteErrorResponse(w, err, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, err, http.StatusBadRequest, correlationID)
 		return
 	}
 
 	// Process payment
-	transaction, err := ProcessPayment(req.OrderID, req.Amount, req.Processor)
+	transaction, err := ProcessPayment(r.Context(), req.OrderID, req.Amount, req.Processor)
 	if err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
 		appErr := common.NewAppError("PROCESSING_ERROR", err.Error())
-		common.WriteErrorResponse(w, appErr, http.StatusInternalServerError, correlationID)
+		common.WriteErrorResponse(r.Context(), w, appErr, http.StatusInternalServerError, correlationID)
 		return
 	}
 
@@ -95,7 +95,7 @@ func ChargeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := common.WriteJSONResponse(w, response, statusCode); err != nil {
-		slog.Error("Failed to write charge response", "error", err, "status", statusCode)
+		slog.ErrorContext(r.Context(), "Failed to write charge response", "error", err, "status", statusCode)
 	}
 }
 
@@ -107,7 +107,7 @@ func GetTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	transaction, err := GetTransaction(transactionID)
 	if err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, http.StatusNotFound, correlationID)
 		return
 	}
 
@@ -123,6 +123,6 @@ func GetTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
-		slog.Error("Failed to write transaction response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write transaction response", "error", err)
 	}
 }

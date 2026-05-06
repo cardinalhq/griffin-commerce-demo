@@ -4,6 +4,7 @@
 package common
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -35,8 +36,9 @@ type ErrorResponse struct {
 	CorrelationID string   `json:"correlation_id,omitempty"`
 }
 
-// WriteErrorResponse writes an error response to the client
-func WriteErrorResponse(w http.ResponseWriter, err AppError, statusCode int, correlationID string) {
+// WriteErrorResponse writes an error response to the client.
+// ctx is used for trace-correlated logging when the encode fails.
+func WriteErrorResponse(ctx context.Context, w http.ResponseWriter, err AppError, statusCode int, correlationID string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
@@ -46,7 +48,7 @@ func WriteErrorResponse(w http.ResponseWriter, err AppError, statusCode int, cor
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		slog.Error("Failed to encode error response", "error", err)
+		slog.ErrorContext(ctx, "Failed to encode error response", "error", err)
 	}
 }
 

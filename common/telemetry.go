@@ -14,6 +14,7 @@ import (
 	"time"
 
 	slogmulti "github.com/samber/slog-multi"
+	"github.com/cardinalhq/griffin-commerce-demo/common/logging"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/instrumentation/host"
 	iruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -67,9 +68,12 @@ func SetupTelemetry(serviceName string, addlAttrs *attribute.Set) (context.Conte
 	var logger *slog.Logger
 	otelEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if os.Getenv("OTEL_SERVICE_NAME") != "" && otelEndpoint != "" {
-		// Set up multi-handler logging (console + OTLP)
+		// Set up multi-handler logging (console + OTLP).
+		// Stdout is wrapped with TraceHandler so trace_id/span_id appear in
+		// `kubectl logs` output. otelslog already attaches trace context to
+		// OTLP log records when callers use slog.*Context variants.
 		logger = slog.New(slogmulti.Fanout(
-			slog.NewTextHandler(os.Stdout, opts),
+			logging.NewTraceHandler(slog.NewTextHandler(os.Stdout, opts)),
 			otelslog.NewHandler(serviceName),
 		)).With(
 			slog.String("service", serviceName),
@@ -106,8 +110,12 @@ func SetupTelemetry(serviceName string, addlAttrs *attribute.Set) (context.Conte
 			"insecure", os.Getenv("OTEL_INSECURE") == "true",
 		)
 	} else {
-		// Configure slog without OpenTelemetry
-		logger = slog.New(slog.NewTextHandler(os.Stdout, opts)).With(
+		// Configure slog without OpenTelemetry. Even without OTLP, the
+		// TraceHandler still emits trace_id/span_id for any in-process spans
+		// (e.g. otelhttp middleware spans created when SDK is initialized
+		// with a no-op exporter), so log correlation tooling that ingests
+		// stdout still works in dev.
+		logger = slog.New(logging.NewTraceHandler(slog.NewTextHandler(os.Stdout, opts))).With(
 			slog.String("service", serviceName),
 		)
 		slog.SetDefault(logger)

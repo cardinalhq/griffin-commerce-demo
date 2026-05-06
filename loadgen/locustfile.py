@@ -254,7 +254,69 @@ class PowerUser(EcommerceUser):
 @events.test_start.add_listener
 def on_test_start(environment, **kwargs):
     print("Load test starting...")
+    _start_fault_poller(environment)
 
 @events.test_stop.add_listener
 def on_test_stop(environment, **kwargs):
     print("Load test stopping...")
+
+
+# ----------------------------------------------------------------------
+# Fault-injection integration: poll the control plane for the active
+# loadgen.flood knob and ramp/restore user count accordingly. Without
+# this, locust users are fixed at startup and the loadgen.flood knob
+# can't actually flood anything.
+#
+# Locust env var startup config doesn't apply at runtime; the documented
+# runtime control path is environment.runner.start(user_count, spawn_rate).
+# ----------------------------------------------------------------------
+
+import os
+import threading
+import urllib.request
+import json
+
+
+def _start_fault_poller(environment):
+    """Start a daemon thread that polls the control plane and adjusts
+    user count when the loadgen.flood knob transitions in or out."""
+    cp_url = os.getenv("CONTROLPLANE_URL", "")
+    if not cp_url:
+        print("loadgen: CONTROLPLANE_URL unset, fault polling disabled")
+        return
+
+    baseline_users = int(os.getenv("LOCUST_USERS", "10"))
+    baseline_spawn_rate = float(os.getenv("LOCUST_SPAWN_RATE", "1"))
+    flood_max_users = int(os.getenv("LOCUST_FLOOD_MAX_USERS", "500"))
+
+    state = {"flooding": False}
+
+    def poll():
+        while True:
+            try:
+                with urllib.request.urlopen(cp_url + "/admin/faults", timeout=2) as resp:
+                    body = json.load(resp)
+                active = body.get("active") or {}
+                key = active.get("key")
+                is_flood = key == "loadgen.flood"
+
+                if is_flood and not state["flooding"]:
+                    fraction = active.get("probability") or 1.0
+                    target = max(baseline_users, int(flood_max_users * fraction))
+                    ramp_ms = active.get("latencyMs") or 30000
+                    spawn_rate = max(1.0, target / max(1.0, ramp_ms / 1000.0))
+                    print(f"loadgen: flooding to {target} users at spawn_rate={spawn_rate}/s")
+                    environment.runner.start(target, spawn_rate=spawn_rate)
+                    state["flooding"] = True
+                elif not is_flood and state["flooding"]:
+                    print(f"loadgen: returning to baseline {baseline_users} users")
+                    environment.runner.start(baseline_users, spawn_rate=baseline_spawn_rate)
+                    state["flooding"] = False
+            except Exception as e:
+                # Control plane unreachable; keep current state.
+                pass
+            time.sleep(2)
+
+    t = threading.Thread(target=poll, daemon=True, name="fault-poller")
+    t.start()
+    print(f"loadgen: fault poller started against {cp_url}")

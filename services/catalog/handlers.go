@@ -9,8 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
+	"github.com/gorilla/mux"
 )
 
 // RegisterRoutes registers all HTTP routes
@@ -31,7 +32,7 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now(),
 	}
 	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
-		slog.Error("Failed to write health response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write health response", "error", err)
 	}
 }
 
@@ -39,24 +40,55 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 func GetProductsHandler(w http.ResponseWriter, r *http.Request) {
 	products := GetAllProducts()
 	if err := common.WriteJSONResponse(w, products, http.StatusOK); err != nil {
-		slog.Error("Failed to write products response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write products response", "error", err)
 	}
 }
 
-// GetProductHandler returns a single product
+// GetProductHandler returns a single product.
+// Fault-injection hooks: catalog.error (for the targeted product id) returns
+// a fault-injected response with the cause logged with trace_id so the
+// side-drawer logs UX surfaces the explanation.
+// Always emits griffin.catalog.product.{requests_total,duration_ms} so
+// detect_outliers can locate per-product cohorts.
 func GetProductHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	vars := mux.Vars(r)
 	id := vars["id"]
 
+	statusCode := http.StatusOK
+	defer func() {
+		faults.RecordCatalogProduct(r.Context(), id, statusCode, float64(time.Since(start).Milliseconds()))
+	}()
+
+	if k, fired := faults.Probe(faultsClient, "catalog.error"); fired && k.Target == id {
+		statusCode = k.StatusCode
+		if statusCode == 0 {
+			statusCode = http.StatusInternalServerError
+		}
+		slog.ErrorContext(r.Context(), "catalog: returning fault-injected error",
+			"griffin.fault", k.Key,
+			"product_id", id,
+			"status_code", statusCode,
+			"cause", "fault-injected: control plane catalog.error knob targeted this product",
+		)
+		faults.Record(r.Context(), k, 0)
+		correlationID := common.GetCorrelationID(r.Context())
+		common.WriteErrorResponse(r.Context(), w,
+			common.NewAppError("CATALOG_UNAVAILABLE", "Product catalog temporarily unavailable"),
+			statusCode, correlationID)
+		return
+	}
+
 	product, err := GetProduct(id)
 	if err != nil {
+		statusCode = http.StatusNotFound
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, statusCode, correlationID)
 		return
 	}
 
 	if err := common.WriteJSONResponse(w, product, http.StatusOK); err != nil {
-		slog.Error("Failed to write product response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write product response", "error", err)
 	}
 }
 
@@ -80,21 +112,21 @@ func ReserveStockHandler(w http.ResponseWriter, r *http.Request) {
 	var req StockRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
 		return
 	}
 
 	if req.Quantity <= 0 {
 		correlationID := common.GetCorrelationID(r.Context())
 		badRequest := common.NewAppError("INVALID_QUANTITY", "Quantity must be greater than 0")
-		common.WriteErrorResponse(w, badRequest, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, badRequest, http.StatusBadRequest, correlationID)
 		return
 	}
 
 	if err := ReserveStock(id, req.Quantity); err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
 		appErr := common.NewAppError("RESERVATION_FAILED", err.Error())
-		common.WriteErrorResponse(w, appErr, http.StatusConflict, correlationID)
+		common.WriteErrorResponse(r.Context(), w, appErr, http.StatusConflict, correlationID)
 		return
 	}
 
@@ -106,7 +138,7 @@ func ReserveStockHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
-		slog.Error("Failed to write response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
 }
 
@@ -118,21 +150,21 @@ func ReleaseStockHandler(w http.ResponseWriter, r *http.Request) {
 	var req StockRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
 		return
 	}
 
 	if req.Quantity <= 0 {
 		correlationID := common.GetCorrelationID(r.Context())
 		badRequest := common.NewAppError("INVALID_QUANTITY", "Quantity must be greater than 0")
-		common.WriteErrorResponse(w, badRequest, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, badRequest, http.StatusBadRequest, correlationID)
 		return
 	}
 
 	if err := ReleaseStock(id, req.Quantity); err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
 		appErr := common.NewAppError("RELEASE_FAILED", err.Error())
-		common.WriteErrorResponse(w, appErr, http.StatusNotFound, correlationID)
+		common.WriteErrorResponse(r.Context(), w, appErr, http.StatusNotFound, correlationID)
 		return
 	}
 
@@ -144,6 +176,6 @@ func ReleaseStockHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
-		slog.Error("Failed to write response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
 }

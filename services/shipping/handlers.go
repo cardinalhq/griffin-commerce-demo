@@ -29,7 +29,7 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now(),
 	}
 	if err := common.WriteJSONResponse(w, health, http.StatusOK); err != nil {
-		slog.Error("Failed to write response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
 }
 
@@ -59,7 +59,7 @@ func GetRatesHandler(w http.ResponseWriter, r *http.Request) {
 	carriersMutex.RUnlock()
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
-		slog.Error("Failed to write response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
 }
 
@@ -85,18 +85,18 @@ func CreateShipmentHandler(w http.ResponseWriter, r *http.Request) {
 	var req ShipRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
 		return
 	}
 
 	if req.OrderID == "" {
 		correlationID := common.GetCorrelationID(r.Context())
 		err := common.NewAppError("INVALID_REQUEST", "Order ID is required")
-		common.WriteErrorResponse(w, err, http.StatusBadRequest, correlationID)
+		common.WriteErrorResponse(r.Context(), w, err, http.StatusBadRequest, correlationID)
 		return
 	}
 
-	shipment, err := CreateShipment(req.OrderID, req.Carrier)
+	shipment, err := CreateShipment(r.Context(), req.OrderID, req.Carrier)
 
 	response := ShipResponse{
 		ShipmentID:  shipment.ID,
@@ -116,13 +116,13 @@ func CreateShipmentHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		response.ErrorMessage = err.Error()
 		if writeErr := common.WriteJSONResponse(w, response, http.StatusServiceUnavailable); writeErr != nil {
-			slog.Error("Failed to write response", "error", writeErr)
+			slog.ErrorContext(r.Context(), "Failed to write response", "error", writeErr)
 		}
 		return
 	}
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
-		slog.Error("Failed to write response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
 }
 
@@ -133,7 +133,7 @@ func GetShipmentHandler(w http.ResponseWriter, r *http.Request) {
 	shipment, err := GetShipment(shipmentID)
 	if err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
-		common.WriteErrorResponse(w, common.ErrNotFound, http.StatusNotFound, correlationID)
+		common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, http.StatusNotFound, correlationID)
 		return
 	}
 
@@ -150,6 +150,6 @@ func GetShipmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
-		slog.Error("Failed to write response", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
 }

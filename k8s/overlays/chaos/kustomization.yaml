@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 CardinalHQ, Inc.
+
+# Chaos overlay: enables fault-injection demo capabilities.
+#
+#  - Adds the controlplane Deployment + Service (single-replica).
+#  - Wires CONTROLPLANE_URL into every backend so their faults clients
+#    poll the control plane.
+#  - Bumps OTEL_METRIC_EXPORT_INTERVAL to 10s so the 5-minute window
+#    comparisons in detect_anomalies have ≥30 samples per series.
+#  - Compose with one of the OTLP overlays (with-otlp-url etc.) to get
+#    metrics + traces + logs flowing to a collector.
+#
+# Apply with:  kubectl apply -k k8s/overlays/chaos
+#
+# WARNING: GRIFFIN_ADMIN_ENABLED=true is set on the control plane, which
+# means anyone who can reach :8086 can inject faults. Don't apply this
+# overlay in production.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - controlplane.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: catalog
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: CONTROLPLANE_URL
+          value: "http://controlplane:8086"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_METRIC_EXPORT_INTERVAL
+          value: "10000"
+  - target:
+      kind: Deployment
+      name: payment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: CONTROLPLANE_URL
+          value: "http://controlplane:8086"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_METRIC_EXPORT_INTERVAL
+          value: "10000"
+  - target:
+      kind: Deployment
+      name: cart
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: CONTROLPLANE_URL
+          value: "http://controlplane:8086"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_METRIC_EXPORT_INTERVAL
+          value: "10000"
+  - target:
+      kind: Deployment
+      name: images
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: CONTROLPLANE_URL
+          value: "http://controlplane:8086"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_METRIC_EXPORT_INTERVAL
+          value: "10000"
+  - target:
+      kind: Deployment
+      name: shipping
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: CONTROLPLANE_URL
+          value: "http://controlplane:8086"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_METRIC_EXPORT_INTERVAL
+          value: "10000"
+  - target:
+      kind: Deployment
+      name: recommendations
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: CONTROLPLANE_URL
+          value: "http://controlplane:8086"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_METRIC_EXPORT_INTERVAL
+          value: "10000"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: RECS_REFRESH_INTERVAL
+          value: "30s"
