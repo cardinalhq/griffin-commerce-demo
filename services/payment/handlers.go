@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // RegisterRoutes registers all HTTP routes
@@ -68,6 +70,18 @@ func ChargeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	span := trace.SpanFromContext(r.Context())
+	span.SetAttributes(
+		attribute.String("payment.order_id", req.OrderID),
+		attribute.Float64("payment.amount", req.Amount),
+	)
+	if req.Processor != "" {
+		span.SetAttributes(attribute.String("payment.requested_processor", req.Processor))
+	}
+	slog.InfoContext(r.Context(), "payment charge initiated",
+		"order_id", req.OrderID, "amount", req.Amount, "requested_processor", req.Processor,
+	)
+
 	// Process payment
 	transaction, err := ProcessPayment(r.Context(), req.OrderID, req.Amount, req.Processor)
 	if err != nil {
@@ -94,6 +108,12 @@ func ChargeHandler(w http.ResponseWriter, r *http.Request) {
 		statusCode = http.StatusPaymentRequired // 402
 	}
 
+	span.SetAttributes(
+		attribute.String("payment.transaction_id", transaction.ID),
+		attribute.String("payment.processor", transaction.Processor),
+		attribute.String("payment.status", transaction.Status),
+	)
+
 	if err := common.WriteJSONResponse(w, response, statusCode); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write charge response", "error", err, "status", statusCode)
 	}
@@ -104,12 +124,23 @@ func GetTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	transactionID := vars["id"]
 
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("payment.transaction_id", transactionID),
+	)
+
 	transaction, err := GetTransaction(transactionID)
 	if err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
 		common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, http.StatusNotFound, correlationID)
 		return
 	}
+
+	slog.InfoContext(r.Context(), "transaction queried",
+		"transaction_id", transactionID,
+		"order_id", transaction.OrderID,
+		"status", transaction.Status,
+		"processor", transaction.Processor,
+	)
 
 	// Create response
 	response := ChargeResponse{

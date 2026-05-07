@@ -17,6 +17,8 @@ import (
 	"github.com/cardinalhq/griffin-commerce-demo/common"
 	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // faultsClient is the package-level fault-injection polling client.
@@ -206,6 +208,18 @@ func GetProductImageHandler(w http.ResponseWriter, r *http.Request) {
 		Hash:      imageHashes[imageInfo.Filename],
 		Offset:    imageInfo.Offset,
 	}
+
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("product.id", productID),
+		attribute.String("image.filename", imageInfo.Filename),
+		attribute.Bool("image.fallback", !exists),
+	)
+	slog.InfoContext(r.Context(), "image served",
+		"product_id", productID,
+		"filename", imageInfo.Filename,
+		"hash", response.Hash,
+		"fallback", !exists,
+	)
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)

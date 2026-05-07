@@ -121,6 +121,14 @@ func ProcessPayment(ctx context.Context, orderID string, amount float64, process
 	} else {
 		transaction.Status = "success"
 		transaction.Message = "Payment processed successfully"
+		slog.InfoContext(ctx, "payment processed",
+			"processor", processorName,
+			"processor_name", processor.Name,
+			"order_id", orderID,
+			"amount", amount,
+			"transaction_id", transaction.ID,
+			"status", "success",
+		)
 	}
 
 	// Store transaction

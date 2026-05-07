@@ -12,6 +12,8 @@ import (
 	"github.com/cardinalhq/griffin-commerce-demo/common"
 	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // RegisterRoutes registers all HTTP routes
@@ -36,9 +38,13 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// GetProductsHandler returns all products
+// GetProductsHandler returns all products.
 func GetProductsHandler(w http.ResponseWriter, r *http.Request) {
 	products := GetAllProducts()
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.Int("catalog.product_count", len(products)),
+	)
+	slog.InfoContext(r.Context(), "products listed", "count", len(products))
 	if err := common.WriteJSONResponse(w, products, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write products response", "error", err)
 	}
@@ -54,6 +60,9 @@ func GetProductHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	vars := mux.Vars(r)
 	id := vars["id"]
+
+	span := trace.SpanFromContext(r.Context())
+	span.SetAttributes(attribute.String("product.id", id))
 
 	statusCode := http.StatusOK
 	defer func() {
@@ -86,6 +95,18 @@ func GetProductHandler(w http.ResponseWriter, r *http.Request) {
 		common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, statusCode, correlationID)
 		return
 	}
+
+	span.SetAttributes(
+		attribute.String("product.name", product.Name),
+		attribute.Float64("product.price", product.Price),
+		attribute.Int("product.stock", product.Stock),
+	)
+	slog.InfoContext(r.Context(), "product viewed",
+		"product_id", id,
+		"product_name", product.Name,
+		"price", product.Price,
+		"stock", product.Stock,
+	)
 
 	if err := common.WriteJSONResponse(w, product, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write product response", "error", err)
@@ -137,6 +158,15 @@ func ReserveStockHandler(w http.ResponseWriter, r *http.Request) {
 		Message:   "Stock reserved successfully",
 	}
 
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("product.id", id),
+		attribute.Int("stock.reserved_quantity", req.Quantity),
+		attribute.Int("stock.remaining", product.Stock),
+	)
+	slog.InfoContext(r.Context(), "stock reserved",
+		"product_id", id, "quantity", req.Quantity, "remaining_stock", product.Stock,
+	)
+
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
@@ -174,6 +204,15 @@ func ReleaseStockHandler(w http.ResponseWriter, r *http.Request) {
 		Stock:     product.Stock,
 		Message:   "Stock released successfully",
 	}
+
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("product.id", id),
+		attribute.Int("stock.released_quantity", req.Quantity),
+		attribute.Int("stock.remaining", product.Stock),
+	)
+	slog.InfoContext(r.Context(), "stock released",
+		"product_id", id, "quantity", req.Quantity, "remaining_stock", product.Stock,
+	)
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)

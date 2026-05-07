@@ -284,6 +284,17 @@ func GetRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
 		Type:     "trending",
 	}
 
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("recommendations.type", response.Type),
+		attribute.Int("recommendations.requested_count", count),
+		attribute.Int("recommendations.returned_count", len(recommendations)),
+	)
+	slog.InfoContext(r.Context(), "recommendations served",
+		"type", response.Type,
+		"requested_count", count,
+		"returned_count", len(recommendations),
+	)
+
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
@@ -306,6 +317,19 @@ func GetProductRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
 		Products: recommendations,
 		Type:     "related",
 	}
+
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("product.id", productID),
+		attribute.String("recommendations.type", response.Type),
+		attribute.Int("recommendations.requested_count", count),
+		attribute.Int("recommendations.returned_count", len(recommendations)),
+	)
+	slog.InfoContext(r.Context(), "product recommendations served",
+		"product_id", productID,
+		"type", response.Type,
+		"requested_count", count,
+		"returned_count", len(recommendations),
+	)
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
