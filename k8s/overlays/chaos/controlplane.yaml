@@ -23,6 +23,16 @@ spec:
       labels:
         app: controlplane
     spec:
+      # PSS restricted-compliant securityContext baked in here, not via the
+      # base/kustomization.yaml patch. Reason: that patch's `target:
+      # kind: Deployment` selector only applies to resources defined within
+      # the base; controlplane is added by this overlay, so the patch
+      # doesn't reach it. Without an inline value, namespaces enforcing
+      # restricted:latest PSS reject the pod with FailedCreate.
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: controlplane
           image: ghcr.io/cardinalhq/griffin-commerce-demo
@@ -35,6 +45,10 @@ spec:
               value: "8086"
             - name: GRIFFIN_ADMIN_ENABLED
               value: "true"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: "64Mi"
