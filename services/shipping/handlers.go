@@ -9,9 +9,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
-
 	"github.com/cardinalhq/griffin-commerce-demo/common"
+	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func RegisterRoutes(r *mux.Router) {
@@ -58,6 +59,11 @@ func GetRatesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	carriersMutex.RUnlock()
 
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.Int("shipping.carrier_count", len(response.Carriers)),
+	)
+	slog.InfoContext(r.Context(), "shipping rates queried", "carrier_count", len(response.Carriers))
+
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)
 	}
@@ -96,6 +102,15 @@ func CreateShipmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	span := trace.SpanFromContext(r.Context())
+	span.SetAttributes(
+		attribute.String("shipping.order_id", req.OrderID),
+		attribute.String("shipping.requested_carrier", req.Carrier),
+	)
+	slog.InfoContext(r.Context(), "shipment requested",
+		"order_id", req.OrderID, "requested_carrier", req.Carrier,
+	)
+
 	shipment, err := CreateShipment(r.Context(), req.OrderID, req.Carrier)
 
 	response := ShipResponse{
@@ -113,6 +128,13 @@ func CreateShipmentHandler(w http.ResponseWriter, r *http.Request) {
 		response.EstDelivery = shipment.EstDelivery
 	}
 
+	span.SetAttributes(
+		attribute.String("shipping.shipment_id", shipment.ID),
+		attribute.String("shipping.carrier", shipment.Carrier),
+		attribute.String("shipping.status", shipment.Status),
+		attribute.Float64("shipping.cost", shipment.Cost),
+	)
+
 	if err != nil {
 		response.ErrorMessage = err.Error()
 		if writeErr := common.WriteJSONResponse(w, response, http.StatusServiceUnavailable); writeErr != nil {
@@ -129,6 +151,10 @@ func CreateShipmentHandler(w http.ResponseWriter, r *http.Request) {
 func GetShipmentHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	shipmentID := vars["id"]
+
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("shipping.shipment_id", shipmentID),
+	)
 
 	shipment, err := GetShipment(shipmentID)
 	if err != nil {
@@ -148,6 +174,13 @@ func GetShipmentHandler(w http.ResponseWriter, r *http.Request) {
 		EstDelivery: shipment.EstDelivery,
 		CreatedAt:   shipment.CreatedAt,
 	}
+
+	slog.InfoContext(r.Context(), "shipment status queried",
+		"shipment_id", shipment.ID,
+		"order_id", shipment.OrderID,
+		"carrier", shipment.Carrier,
+		"status", shipment.Status,
+	)
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write response", "error", err)

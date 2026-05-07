@@ -12,6 +12,8 @@ import (
 	"github.com/cardinalhq/griffin-commerce-demo/common"
 	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // RegisterRoutes registers all HTTP routes
@@ -81,6 +83,14 @@ func CreateCartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("cart.id", cart.ID),
+		attribute.String("cart.customer_id", cart.CustomerID),
+	)
+	slog.InfoContext(r.Context(), "cart created",
+		"cart_id", cart.ID, "customer_id", cart.CustomerID,
+	)
+
 	if err := common.WriteJSONResponse(w, cart, http.StatusCreated); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write cart response", "error", err)
 	}
@@ -92,6 +102,8 @@ func GetCartHandler(w http.ResponseWriter, r *http.Request) {
 	statusCode := http.StatusOK
 	vars := mux.Vars(r)
 	cartID := vars["id"]
+	span := trace.SpanFromContext(r.Context())
+	span.SetAttributes(attribute.String("cart.id", cartID))
 	defer func() {
 		faults.RecordCartOp(r.Context(), "get", statusCode, float64(time.Since(start).Milliseconds()))
 	}()
@@ -111,6 +123,14 @@ func GetCartHandler(w http.ResponseWriter, r *http.Request) {
 		common.WriteErrorResponse(r.Context(), w, common.ErrNotFound, statusCode, correlationID)
 		return
 	}
+
+	span.SetAttributes(
+		attribute.Int("cart.item_count", len(cart.Items)),
+		attribute.Float64("cart.total", cart.Total),
+	)
+	slog.InfoContext(r.Context(), "cart viewed",
+		"cart_id", cart.ID, "item_count", len(cart.Items), "total", cart.Total,
+	)
 
 	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write cart response", "error", err)
@@ -132,6 +152,8 @@ func AddItemHandler(w http.ResponseWriter, r *http.Request) {
 	statusCode := http.StatusOK
 	vars := mux.Vars(r)
 	cartID := vars["id"]
+	span := trace.SpanFromContext(r.Context())
+	span.SetAttributes(attribute.String("cart.id", cartID))
 	defer func() {
 		faults.RecordCartOp(r.Context(), "add", statusCode, float64(time.Since(start).Milliseconds()))
 	}()
@@ -160,6 +182,11 @@ func AddItemHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	span.SetAttributes(
+		attribute.String("product.id", req.ProductID),
+		attribute.Int("product.quantity", req.Quantity),
+	)
+
 	if err := AddItemToCart(r.Context(), cartID, req.ProductID, req.Quantity); err != nil {
 		correlationID := common.GetCorrelationID(r.Context())
 		statusCode = http.StatusInternalServerError
@@ -176,6 +203,17 @@ func AddItemHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Return updated cart
 	cart, _ := GetCart(cartID)
+	span.SetAttributes(
+		attribute.Int("cart.item_count", len(cart.Items)),
+		attribute.Float64("cart.total", cart.Total),
+	)
+	slog.InfoContext(r.Context(), "cart item added",
+		"cart_id", cart.ID,
+		"product_id", req.ProductID,
+		"quantity", req.Quantity,
+		"item_count", len(cart.Items),
+		"total", cart.Total,
+	)
 	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write cart response", "error", err)
 	}
@@ -190,6 +228,11 @@ func RemoveItemHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	cartID := vars["id"]
 	productID := vars["productId"]
+	span := trace.SpanFromContext(r.Context())
+	span.SetAttributes(
+		attribute.String("cart.id", cartID),
+		attribute.String("product.id", productID),
+	)
 	defer func() {
 		faults.RecordCartOp(r.Context(), "remove", statusCode, float64(time.Since(start).Milliseconds()))
 	}()
@@ -214,6 +257,14 @@ func RemoveItemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cart, _ := GetCart(cartID)
+	span.SetAttributes(
+		attribute.Int("cart.item_count", len(cart.Items)),
+		attribute.Float64("cart.total", cart.Total),
+	)
+	slog.InfoContext(r.Context(), "cart item removed",
+		"cart_id", cart.ID, "product_id", productID,
+		"item_count", len(cart.Items), "total", cart.Total,
+	)
 	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write cart response", "error", err)
 	}
@@ -234,6 +285,8 @@ func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
 	statusCode := http.StatusOK
 	vars := mux.Vars(r)
 	cartID := vars["id"]
+	span := trace.SpanFromContext(r.Context())
+	span.SetAttributes(attribute.String("cart.id", cartID))
 	defer func() {
 		faults.RecordCartOp(r.Context(), "checkout", statusCode, float64(time.Since(start).Milliseconds()))
 	}()
@@ -267,6 +320,16 @@ func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
 		Message:    "Ready for checkout",
 	}
 
+	span.SetAttributes(
+		attribute.String("cart.customer_id", cart.CustomerID),
+		attribute.Int("cart.item_count", len(cart.Items)),
+		attribute.Float64("cart.total", cart.Total),
+	)
+	slog.InfoContext(r.Context(), "checkout initiated",
+		"cart_id", cart.ID, "customer_id", cart.CustomerID,
+		"item_count", len(cart.Items), "total", cart.Total,
+	)
+
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write checkout response", "error", err)
 	}
@@ -278,6 +341,8 @@ func ClearCartHandler(w http.ResponseWriter, r *http.Request) {
 	statusCode := http.StatusOK
 	vars := mux.Vars(r)
 	cartID := vars["id"]
+	span := trace.SpanFromContext(r.Context())
+	span.SetAttributes(attribute.String("cart.id", cartID))
 	defer func() {
 		faults.RecordCartOp(r.Context(), "clear", statusCode, float64(time.Since(start).Milliseconds()))
 	}()
@@ -306,6 +371,8 @@ func ClearCartHandler(w http.ResponseWriter, r *http.Request) {
 		common.WriteErrorResponse(r.Context(), w, appErr, statusCode, correlationID)
 		return
 	}
+
+	slog.InfoContext(r.Context(), "cart cleared", "cart_id", cart.ID)
 
 	if err := common.WriteJSONResponse(w, cart, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write cart response", "error", err)
