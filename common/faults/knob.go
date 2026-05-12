@@ -18,6 +18,7 @@ const (
 	ServiceShipping        = "shipping"
 	ServiceImages          = "images"
 	ServiceRecommendations = "recs"
+	ServiceDBaaS           = "dbaas"
 	ServiceGlobal          = "global"
 	ServiceLoadgen         = "loadgen"
 )
@@ -33,6 +34,13 @@ const (
 	KindCPUBurn = "cpuburn"
 	KindGCStorm = "gcstorm"
 	KindFlood   = "flood"
+	// KindScenario is a composite fault routed entirely through key-specific
+	// hooks (e.g. dbaas.disk-full). The generic Middleware in middleware.go
+	// deliberately ignores this kind so services own the response shape via
+	// their own OnActivate/OnClear callbacks. Use it when one knob needs
+	// coordinated behavior across multiple services that share no generic
+	// effect (error/slow/cpu-burn).
+	KindScenario = "scenario"
 )
 
 // Knob is a single fault-injection configuration. The control plane holds at

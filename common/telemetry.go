@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	slogmulti "github.com/samber/slog-multi"
 	"github.com/cardinalhq/griffin-commerce-demo/common/logging"
+	slogmulti "github.com/samber/slog-multi"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/instrumentation/host"
 	iruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -284,13 +284,27 @@ func newLoggerProvider(ctx context.Context, insecure bool) (*otellog.LoggerProvi
 	return loggerProvider, nil
 }
 
-// newResource creates a resource for the service
+// newResource creates a resource for the service. Merges OTel's standard
+// env-detected attributes (OTEL_RESOURCE_ATTRIBUTES, OTEL_SERVICE_NAME)
+// so demos can stamp customer.id / service.namespace / etc. via env vars
+// without code changes. Programmatic service.name + service.version
+// override the env values to keep service identity stable.
 func newResource(serviceName string) *resource.Resource {
-	return resource.NewWithAttributes(
+	static := resource.NewWithAttributes(
 		semconv.SchemaURL,
 		semconv.ServiceName(serviceName),
 		semconv.ServiceVersion("1.0.0"),
 	)
+	envRes, err := resource.New(context.Background(), resource.WithFromEnv())
+	if err != nil || envRes == nil {
+		return static
+	}
+	// Merge order: env first, static second — static overrides on conflict.
+	merged, mergeErr := resource.Merge(envRes, static)
+	if mergeErr != nil {
+		return static
+	}
+	return merged
 }
 
 // InitTelemetry is a legacy wrapper for backward compatibility

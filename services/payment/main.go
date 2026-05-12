@@ -53,6 +53,10 @@ func Start() error {
 				cpuBurn.Start(ctx, k)
 			case "payment.gc-storm":
 				gcStorm.Start(ctx, k.LatencyMs)
+			case "dbaas.disk-full":
+				dbDiskFullActive.Store(true)
+				slog.InfoContext(ctx, "dbaas.disk-full active on payment",
+					"db.instance.id", dbInstanceID())
 			}
 		},
 		OnClear: func(ctx context.Context, k *faults.Knob) {
@@ -61,6 +65,10 @@ func Start() error {
 				cpuBurn.Stop(ctx)
 			case "payment.gc-storm":
 				gcStorm.Stop(ctx)
+			case "dbaas.disk-full":
+				dbDiskFullActive.Store(false)
+				slog.InfoContext(ctx, "dbaas.disk-full cleared on payment",
+					"db.instance.id", dbInstanceID())
 			}
 		},
 	})

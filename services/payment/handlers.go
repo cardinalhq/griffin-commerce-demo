@@ -82,6 +82,17 @@ func ChargeHandler(w http.ResponseWriter, r *http.Request) {
 		"order_id", req.OrderID, "amount", req.Amount, "requested_processor", req.Processor,
 	)
 
+	// Record the order on the simulated DBaaS instance before processing
+	// the charge. When the dbaas.disk-full knob is active, this returns
+	// SQLSTATE 53100 and short-circuits the charge — drives the customer-
+	// persona half of the Airtel demo.
+	if err := RecordOrder(r.Context(), req.OrderID, req.Amount); err != nil {
+		correlationID := common.GetCorrelationID(r.Context())
+		appErr := common.NewAppError("DB_ERROR", err.Error())
+		common.WriteErrorResponse(r.Context(), w, appErr, http.StatusServiceUnavailable, correlationID)
+		return
+	}
+
 	// Process payment
 	transaction, err := ProcessPayment(r.Context(), req.OrderID, req.Amount, req.Processor)
 	if err != nil {

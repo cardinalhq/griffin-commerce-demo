@@ -139,6 +139,16 @@ var KnobCatalog = []faults.KnobDefinition{
 			{Name: "latencyMs", Type: "int", Min: 1000, Max: 120000, Default: 30000, Description: "Ramp duration in ms"},
 		},
 	},
+	{
+		Key:         "dbaas.disk-full",
+		Service:     faults.ServiceGlobal,
+		Kind:        faults.KindScenario,
+		Description: "Drive the 'volume nearing capacity, writes failing' scenario end-to-end. The dbaas simulator emits SQLSTATE 53100 errors on the targeted instance (write tx rollback rate spikes, buffer cache drops, pooler backs up, backup age grows). The payment service emits a matching DB span with error.code=53100 on every charge so customer-side traces show the failure too. ServiceGlobal so both subsystems pick it up from one activation.",
+		Params: []faults.ParamSpec{
+			{Name: "target", Type: "string", Required: true, Default: "hdfc-prod-03", Description: "DBaaS instance id (db_id) to simulate disk-full on. Default is the demo victim hdfc-prod-03. (Payment service uses its own configured instance id; the target here drives the dbaas simulator.)"},
+		},
+		Guidance: "Activate, then watch: Airtel-side DBaaS Tenant View for c-hdfc-bank shows 'Storage headroom' and 'Query success rate' SLOs trip; HDFC AppView shows SmartHub checkout-success-rate drop with failed traces whose DB span shows error.code=53100. Clear the knob (simulating online volume expansion) and both views recover.",
+	},
 }
 
 func lookupDefinition(key string) (faults.KnobDefinition, bool) {
