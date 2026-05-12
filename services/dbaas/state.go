@@ -4,6 +4,7 @@
 package dbaas
 
 import (
+	"fmt"
 	"hash/fnv"
 	"sync"
 	"sync/atomic"
@@ -33,9 +34,16 @@ type InstanceState struct {
 	// Storage class + per-instance startup parameters.
 	Storage StorageClass
 
+	// Profile is the parent customer's workload shape. Used inside the
+	// metric callback to set values that need to feel customer-specific
+	// rather than per-instance-randomized (e.g. cache hit ratio).
+	Profile CustomerProfile
+
 	// Baselines parameterize the load model — they fan the fleet so two
 	// instances don't draw identical curves. Seeded deterministically off
-	// db_id so reruns of the simulator look the same.
+	// db_id so reruns of the simulator look the same. Customer profile
+	// scales the medians so HDFC and Infosys don't aggregate to the same
+	// total.
 	BaselineQPS              float64 // queries per second at midday
 	BaselineWriteFraction    float64 // 0–1, share of QPS that's writes
 	BaselineConnections      float64 // active conns at midday
@@ -88,50 +96,77 @@ type InstanceState struct {
 var fleetState []*InstanceState
 
 // buildFleetState expands the fleet config into InstanceState slots with
-// deterministic per-instance baselines. Deterministic so test/demo reruns
-// match what was seen before.
+// deterministic per-instance baselines. Each customer's profile scales the
+// per-instance baselines so the dashboards visibly differ across tenants
+// (HDFC Bank's 32 instances aggregate to a different total than Infosys's
+// 12 instances even before tenant-specific multipliers).
 func buildFleetState(now time.Time) []*InstanceState {
-	insts := BuildInstances()
-	out := make([]*InstanceState, 0, len(insts))
-	for _, inst := range insts {
-		seed := hashSeed(inst.DBID)
-		st := &InstanceState{
-			Inst:      inst,
-			Storage:   pickStorageClass(inst, seed),
-			startedAt: now,
-			lastTick:  now,
+	out := make([]*InstanceState, 0)
+	for _, c := range Fleet {
+		prefix := customerPrefix(c.ID)
+		for i := 1; i <= c.DBs; i++ {
+			dbid := fmt.Sprintf("%s-prod-%02d", prefix, i)
+			inst := &DBInstance{
+				CustomerID: c.ID,
+				DBID:       dbid,
+				Tier:       c.Tier,
+				Role:       "primary",
+				PgVersion:  "15.6",
+				Up:         true,
+			}
+			seed := hashSeed(dbid)
+			st := &InstanceState{
+				Inst:      inst,
+				Profile:   c.Profile,
+				Storage:   pickStorageClass(c.Profile.StorageTier, seed),
+				startedAt: now,
+				lastTick:  now,
 
-			BaselineQPS:              jitterAround(seed, "qps", 120, 0.4),    // ~120 qps median
-			BaselineWriteFraction:    clamp(jitterAround(seed, "wfrac", 0.30, 0.20), 0.05, 0.55),
-			BaselineConnections:      jitterAround(seed, "conns", 28, 0.35),
-			BaselineWalBytesPerSec:   jitterAround(seed, "wal", 512*1024, 0.5),
-			BaselineStorageGrowthBps: jitterAround(seed, "grow", 8*1024, 0.5), // ~8 KB/s normal growth
+				// Customer profile scales the per-instance medians. Per-instance
+				// jitter on top keeps individual db_ids distinguishable.
+				BaselineQPS:              jitterAround(seed, "qps", 120*c.Profile.QPSScale, 0.4),
+				BaselineWriteFraction:    clamp(jitterAround(seed, "wfrac", c.Profile.WriteFraction, 0.2), 0.05, 0.6),
+				BaselineConnections:      jitterAround(seed, "conns", 28*c.Profile.QPSScale, 0.35),
+				BaselineWalBytesPerSec:   jitterAround(seed, "wal", 512*1024*c.Profile.QPSScale*c.Profile.WriteFraction*3, 0.5),
+				BaselineStorageGrowthBps: jitterAround(seed, "grow", 8*1024*c.Profile.QPSScale, 0.5),
 
-			cumQueries:           map[string]int64{},
-			cumQueryErrors:       map[string]int64{},
-			cumCheckpoint:        map[string]int64{},
-			cumConnRejected:      map[string]int64{},
-			cumFailover:          map[string]int64{},
-			cumQueryLatencyCount: map[string]int64{},
-			cumQueryLatencySum:   map[string]float64{},
-			cumStorageLatCount:   map[string]int64{},
-			cumStorageLatSum:     map[string]float64{},
+				cumQueries:           map[string]int64{},
+				cumQueryErrors:       map[string]int64{},
+				cumCheckpoint:        map[string]int64{},
+				cumConnRejected:      map[string]int64{},
+				cumFailover:          map[string]int64{},
+				cumQueryLatencyCount: map[string]int64{},
+				cumQueryLatencySum:   map[string]float64{},
+				cumStorageLatCount:   map[string]int64{},
+				cumStorageLatSum:     map[string]float64{},
+			}
+			out = append(out, st)
 		}
-		out = append(out, st)
 	}
 	return out
 }
 
-// pickStorageClass deterministically assigns a tier based on customer tier
-// and a per-instance hash. Enterprise customers get io2-25k mostly with
-// some io2-50k; business customers get gp3.
-func pickStorageClass(inst *DBInstance, seed uint64) StorageClass {
-	if inst.Tier == "business" {
-		return gp3
-	}
-	// Roughly 80% io2-25k, 20% io2-50k.
-	if seed%5 == 0 {
+// pickStorageClass picks a tier for one instance. Customer's preferred tier
+// gets 80% of the customer's volumes; 20% drift to an adjacent tier so the
+// per-customer storage-class breakdown is varied (not a single bar).
+func pickStorageClass(preferred string, seed uint64) StorageClass {
+	deviation := seed%5 == 0 // ~20% deviate
+	switch preferred {
+	case "io2-50k":
+		if deviation {
+			return io2_25k
+		}
 		return io2_50k
+	case "io2-25k":
+		if deviation {
+			return io2_50k
+		}
+		return io2_25k
+	case "gp3":
+		if deviation {
+			return io2_25k
+		}
+		return gp3
 	}
 	return io2_25k
 }

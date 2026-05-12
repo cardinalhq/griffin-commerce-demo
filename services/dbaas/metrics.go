@@ -338,7 +338,10 @@ func observeInstance(o metric.Observer, ins *instruments, st *InstanceState, now
 	o.ObserveFloat64(ins.lockWaiters, waiters, metric.WithAttributes(base...))
 
 	// --- Cache + temp ---
-	bufferHit := 0.97 - 0.005*math.Max(0, loadMult-1)
+	// Cache hit ratio is per-customer flavored: banks ride a hot cache (0.99),
+	// ERP / analytics workloads scan more cold data (~0.94). Load pressure
+	// drags the ratio slightly lower; disk-full crashes it to 0.86.
+	bufferHit := st.Profile.BufferHitFloor - 0.005*math.Max(0, loadMult-1)
 	if diskFull {
 		bufferHit = 0.86
 	}
