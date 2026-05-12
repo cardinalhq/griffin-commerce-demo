@@ -36,9 +36,14 @@ case "$SERVICE_NAME" in
   controlplane)
     PORT=${PORT:-8086} /app/bin/griffin controlplane
     ;;
+  dbaas)
+    # DBaaS simulator for the Airtel demo. No HTTP server — it's a pure
+    # OTLP metric emitter that polls the controlplane for fault knobs.
+    /app/bin/griffin dbaas
+    ;;
   *)
     echo "Unknown service: $SERVICE_NAME"
-    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane"
+    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane, dbaas"
     exit 1
     ;;
 esac
