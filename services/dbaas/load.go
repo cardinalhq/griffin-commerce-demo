@@ -46,47 +46,74 @@ func jitter(t time.Time, seed uint64) float64 {
 }
 
 // storageRamp returns the fraction-of-capacity used for the given instance
-// at the given time. For most instances this hovers around 30-60% with
-// slow drift. For hdfc-prod-03 specifically, the value is shaped to be
-// approaching 97% at "demo time" so the operator dashboard shows the
-// linear-growth narrative.
-//
-// The simulator can't fabricate 30 days of OTLP history, but the function
-// is parameterized so that after the simulator has been running for some
-// time, the recorded 30d series shows a rising curve. For demo rehearsals
-// we run the simulator for at least an hour before showtime so the live
-// dashboard shows the climb.
+// at the given time. For most instances this hovers around 30-70% per the
+// instance's stable baseline. hdfc-prod-03 is the scenario victim and is
+// fully knob-driven (no process-start clock dependence) — see below.
 func storageRamp(st *InstanceState, t time.Time) float64 {
-	const (
-		// hdfcWarningHorizon controls how fast the demo scenario "matures."
-		// 90 minutes from simulator start → the ramp crosses 90% (page).
-		// 120 minutes → 97% (writes start to fail when knob is active).
-		hdfcWarningHorizon = 90 * time.Minute
-		hdfcCrisisHorizon  = 120 * time.Minute
-	)
-
 	if st.Inst.DBID == "hdfc-prod-03" {
-		elapsed := t.Sub(st.startedAt)
+		return hdfcProd03Ratio(st, t)
+	}
+
+	// All other instances: deterministic per-instance baseline + slow
+	// oscillation. Stable in time so no instance crosses warning unless
+	// we explicitly target it via a scenario.
+	seed := hashSeed(st.Inst.DBID)
+	baseline := 0.30 + float64(seed%40)/100.0 // 0.30 – 0.70 per instance
+	radians := float64(t.UTC().Unix()%21600) / 21600.0 * 2 * math.Pi
+	return baseline + 0.03*math.Sin(radians)
+}
+
+// hdfcProd03 storage ratio states. Fully knob-driven so the dashboard
+// state is reproducible from demo run to demo run regardless of pod uptime.
+const (
+	// idleRatio is the "leading-indicator alert was already firing for
+	// weeks and nobody acked" steady state. Sits in the SLO page band so
+	// the Storage Headroom (worst) tile reads red on dashboard open.
+	hdfcIdleRatio = 0.93
+	// peakRatio is the disk-full target the ramp climbs to once the knob
+	// activates. Past this point write queries return SQLSTATE 53100.
+	hdfcPeakRatio = 0.97
+	// rampDuration is how long it takes to climb idle → peak. Tuned for
+	// live-demo pacing — short enough to fit in a talk, long enough to
+	// narrate the trajectory.
+	hdfcRampDuration = 60 * time.Second
+	// expandedRatio is where the volume sits after the operator "extends"
+	// the volume (i.e., clears the knob). Visibly green so the demo's
+	// resolution moment is unambiguous.
+	hdfcExpandedRatio = 0.60
+)
+
+// hdfcProd03Ratio returns the storage utilization fraction for the demo
+// victim instance based on knob state. Three states:
+//
+//  1. Idle (knob never activated this run, or simulator just started):
+//     hdfcIdleRatio — already in page-alert territory, the dashboard tile
+//     reads red so the "leading indicator was firing" narrative is baked
+//     into the steady state.
+//  2. Ramping (knob is active, elapsed < rampDuration since activation):
+//     linear from hdfcIdleRatio → hdfcPeakRatio over rampDuration.
+//     Activation time comes from the controlplane's Knob.StartedAt so pod
+//     restarts mid-scenario resume the ramp from the correct offset.
+//  3. Peak (knob is active, elapsed ≥ rampDuration): hdfcPeakRatio.
+//     Write queries fail past this point.
+//  4. Post-expansion (knob was active and is now cleared): hdfcExpandedRatio.
+//     Sticks until the knob is reactivated (or the pod restarts).
+func hdfcProd03Ratio(st *InstanceState, t time.Time) float64 {
+	if activated := st.diskFullActivatedAt.Load(); activated != nil {
+		elapsed := t.Sub(*activated)
 		if elapsed < 0 {
 			elapsed = 0
 		}
-		// Linear from 0.68 at t=0 to 0.97 at t=hdfcCrisisHorizon.
-		frac := float64(elapsed) / float64(hdfcCrisisHorizon)
+		frac := float64(elapsed) / float64(hdfcRampDuration)
 		if frac > 1 {
 			frac = 1
 		}
-		_ = hdfcWarningHorizon // documents the warning crossing point
-		return 0.68 + 0.29*frac
+		return hdfcIdleRatio + (hdfcPeakRatio-hdfcIdleRatio)*frac
 	}
-
-	// All other instances: a slow synthetic walk around a per-instance
-	// baseline. Deterministic per-instance so the dashboard looks the same
-	// on rerun, and stable in time so no instance ever crosses warning.
-	seed := hashSeed(st.Inst.DBID)
-	baseline := 0.30 + float64(seed%40)/100.0 // 0.30 – 0.70 per instance
-	// Slow oscillation: ±3% over 6 hours.
-	radians := float64(t.UTC().Unix()%21600) / 21600.0 * 2 * math.Pi
-	return baseline + 0.03*math.Sin(radians)
+	if st.postExpansion.Load() {
+		return hdfcExpandedRatio
+	}
+	return hdfcIdleRatio
 }
 
 // load returns the composed multiplier for a typical workload signal at t.
