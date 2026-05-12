@@ -7,6 +7,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/cardinalhq/griffin-commerce-demo/common/faults"
 )
@@ -39,8 +40,14 @@ func startFaultsClient(ctx context.Context) {
 }
 
 // applyKnob is invoked on knob transitions. For dbaas.disk-full it flips
-// the diskFullActive flag on the targeted instance(s). Target unset →
-// applies to the default victim hdfc-prod-03.
+// the diskFullActive flag on the targeted instance(s) AND drives the
+// storage-ramp state machine in load.go via diskFullActivatedAt /
+// postExpansion. Target unset → applies to the default victim hdfc-prod-03.
+//
+// activatedAt uses the controlplane's Knob.StartedAt rather than time.Now()
+// so that if the pod restarts mid-scenario, polling picks up the still-
+// active knob and resumes the ramp from the original activation timestamp
+// (no visual reset on pod replacement).
 func applyKnob(ctx context.Context, k *faults.Knob, active bool) {
 	if k == nil {
 		return
@@ -51,16 +58,29 @@ func applyKnob(ctx context.Context, k *faults.Knob, active bool) {
 		if target == "" {
 			target = "hdfc-prod-03"
 		}
+		startedAt := k.StartedAt
+		if startedAt.IsZero() {
+			startedAt = time.Now()
+		}
 		applied := 0
 		for _, st := range fleetState {
 			if st.Inst.DBID == target {
 				st.diskFullActive.Store(active)
+				if active {
+					t := startedAt
+					st.diskFullActivatedAt.Store(&t)
+					st.postExpansion.Store(false)
+				} else {
+					st.diskFullActivatedAt.Store(nil)
+					st.postExpansion.Store(true)
+				}
 				applied++
 			}
 		}
 		slog.InfoContext(ctx, "dbaas.disk-full knob transition",
 			"active", active,
 			"target", target,
+			"activated_at", startedAt,
 			"applied", applied,
 		)
 	default:

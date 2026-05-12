@@ -207,7 +207,19 @@ func observeInstance(o metric.Observer, ins *instruments, st *InstanceState, now
 	diskFull := st.diskFullActive.Load()
 
 	// --- Availability ---
+	// AvailabilityFloor < 1.0 means the customer's tier has occasional
+	// flaps. Deterministic per-instance: stripes (1 - floor) of instances
+	// report db_up=0 at any given time so the per-customer avg matches
+	// the floor. Premium tiers (floor=1.0) stay solid 1.0.
 	up := 1.0
+	if st.Profile.AvailabilityFloor < 1.0 {
+		seed := hashSeed(st.Inst.DBID)
+		flapSlot := seed % 1000
+		threshold := uint64((1.0 - st.Profile.AvailabilityFloor) * 1000)
+		if flapSlot < threshold {
+			up = 0
+		}
+	}
 	if !st.Inst.Up {
 		up = 0
 	}
@@ -278,8 +290,15 @@ func observeInstance(o metric.Observer, ins *instruments, st *InstanceState, now
 	o.ObserveFloat64(ins.txRolledBack, float64(st.cumTxRolledBack), metric.WithAttributes(base...))
 
 	// Query errors — baseline noise across the three normal codes.
+	// Per-customer BaselineErrorRate sets the fraction of queries that
+	// surface as transient errors. Banks: ~0.0001 (99.99% success);
+	// commodity tiers: ~0.001 (99.9% success).
+	errRate := st.Profile.BaselineErrorRate
+	if errRate <= 0 {
+		errRate = 0.0005
+	}
 	for _, code := range pgErrorCodes {
-		st.cumQueryErrors[code] += int64(0.0005 * totalQPS * dt)
+		st.cumQueryErrors[code] += int64(errRate * totalQPS * dt)
 		o.ObserveFloat64(ins.queryErrors, float64(st.cumQueryErrors[code]),
 			metric.WithAttributes(append(base, attribute.String("error_code", code))...))
 	}
@@ -302,9 +321,19 @@ func observeInstance(o metric.Observer, ins *instruments, st *InstanceState, now
 	o.ObserveFloat64(ins.queriesLongRunning, longRunning, metric.WithAttributes(base...))
 
 	// Query latency quantile family — by op.
+	// Per-customer BaselineLatencyMult scales the op-baseline tuple so the
+	// p99 Query Latency tile reads distinctly different across customers:
+	// banks ~0.7× (tight query plans), ERP / analytics ~2.5× (table scans).
+	latMult := st.Profile.BaselineLatencyMult
+	if latMult <= 0 {
+		latMult = 1.0
+	}
 	for _, op := range queryOps {
 		// Normal: select ~5ms p50, ~25ms p95, ~80ms p99. Write ops higher.
 		p50, p95, p99 := baselineQueryLatency(op)
+		p50 *= latMult
+		p95 *= latMult
+		p99 *= latMult
 		if diskFull && (op == "insert" || op == "update" || op == "delete") {
 			p99 *= 12 // writes pile up before failing
 			p95 *= 6

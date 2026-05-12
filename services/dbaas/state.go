@@ -87,7 +87,21 @@ type InstanceState struct {
 
 	// Scenario / fault wiring. Atomic so faults.Client callback can flip
 	// without contending with the metric callback.
-	diskFullActive atomic.Bool
+	//
+	// diskFullActive is the binary "knob is on" flag — drives error injection,
+	// cache hit drop, pooler back-up, lock waiters, etc.
+	//
+	// diskFullActivatedAt is the wall-clock time the knob went active (taken
+	// from the controlplane's Knob.StartedAt, not local time, so pod restarts
+	// mid-scenario resume the ramp cleanly). nil when knob is not active.
+	//
+	// postExpansion sticks at true after the knob is cleared, simulating the
+	// "online volume expansion" — storage utilization drops to a low value
+	// (60%) and stays there until the knob is re-activated. The state is
+	// in-memory only; pod restarts reset back to idle.
+	diskFullActive      atomic.Bool
+	diskFullActivatedAt atomic.Pointer[time.Time]
+	postExpansion       atomic.Bool
 }
 
 // fleetState is the package-level slice of per-instance state, built once at
