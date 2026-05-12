@@ -95,10 +95,14 @@ func runCheckoutSession(ctx context.Context, c *http.Client, base string) {
 	}
 }
 
-// createCart calls POST /api/cart/create. The response body shape varies
-// across griffin versions (`{id: ...}` or `{cart_id: ...}`); both are tried.
+// createCart calls POST /api/cart/create. Cart requires a customer_id —
+// we generate a synthetic SmartHub end-user id per session so each trace
+// looks like a distinct shopper.
 func createCart(ctx context.Context, c *http.Client, base string) (string, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+"/api/cart/create", nil)
+	endUserID := fmt.Sprintf("smarthub-user-%04d", rand.Intn(10000))
+	reqBody, _ := json.Marshal(map[string]string{"customer_id": endUserID})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+"/api/cart/create", bytes.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.Do(req)
 	if err != nil {
 		return "", err
@@ -109,17 +113,15 @@ func createCart(ctx context.Context, c *http.Client, base string) (string, error
 		return "", fmt.Errorf("create cart returned %d: %s", resp.StatusCode, body)
 	}
 	var parsed struct {
-		ID     string `json:"id"`
-		CartID string `json:"cart_id"`
+		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(body, &parsed)
-	if parsed.CartID != "" {
-		return parsed.CartID, nil
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return "", fmt.Errorf("create cart: parse response: %w", err)
 	}
-	if parsed.ID != "" {
-		return parsed.ID, nil
+	if parsed.ID == "" {
+		return "", fmt.Errorf("create cart: empty id in response: %s", body)
 	}
-	return "", fmt.Errorf("create cart: no id field in response: %s", body)
+	return parsed.ID, nil
 }
 
 func addItem(ctx context.Context, c *http.Client, base, cartID, productID string, qty int) error {
