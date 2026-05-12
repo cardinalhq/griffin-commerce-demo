@@ -382,3 +382,43 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+---
+# Loadgen for the Airtel demo customer-persona flow. Continuous low-rate
+# checkout sessions against the cart service so every iteration produces
+# a multi-service trace (cart → payment → shipping). When dbaas.disk-full
+# is active in the controlplane, the payment leg of these traces returns
+# SQLSTATE 53100 — exactly what the customer-side investigate flow needs.
+# No HTTP server — outbound client only, so no Service resource.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  labels:
+    app: loadgen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loadgen
+  template:
+    metadata:
+      labels:
+        app: loadgen
+    spec:
+      containers:
+      - name: loadgen
+        image: ghcr.io/cardinalhq/griffin-commerce-demo
+        env:
+        - name: SERVICE_NAME
+          value: "loadgen"
+        - name: CART_URL
+          value: "http://cart:8082"
+        - name: LOADGEN_RPS
+          value: "1"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "25m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
