@@ -173,7 +173,12 @@ func instanceAttrs(st *InstanceState) []attribute.KeyValue {
 	attrs := make([]attribute.KeyValue, 0, len(resourceAttrs)+7)
 	attrs = append(attrs, resourceAttrs...)
 	attrs = append(attrs,
-		attribute.String("customer.id", inst.CustomerID),
+		// `customer.name` (not `customer.id`) — the CardinalHQ collector
+		// pipeline consumes `customer.id` for tenancy routing and strips it
+		// from the surfaced label set, so dashboards can't filter on it.
+		// `customer.name` is just a free attribute that survives end-to-end
+		// as the `customer_name` label in lakerunner.
+		attribute.String("customer.name", inst.CustomerID),
 		attribute.String("db_id", inst.DBID),
 		attribute.String("customer.tier", inst.Tier),
 		attribute.String("role", inst.Role),
