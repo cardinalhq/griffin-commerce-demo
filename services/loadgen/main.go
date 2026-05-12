@@ -47,6 +47,7 @@ func Start() error {
 	}
 
 	cartURL := envOr("CART_URL", "http://cart:8082")
+	paymentURL := envOr("PAYMENT_URL", "http://payment:8081")
 	rps := envFloatOr("LOADGEN_RPS", 1.0)
 	interval := time.Duration(float64(time.Second) / rps)
 	if interval < 100*time.Millisecond {
@@ -55,6 +56,7 @@ func Start() error {
 
 	slog.InfoContext(ctx, "loadgen started",
 		"cart_url", cartURL,
+		"payment_url", paymentURL,
 		"rps", rps,
 		"interval_ms", interval.Milliseconds(),
 	)
@@ -69,30 +71,69 @@ func Start() error {
 			return nil
 		case <-ticker.C:
 			// Fire-and-forget; each session is independent.
-			go runCheckoutSession(ctx, httpClient, cartURL)
+			go runCheckoutSession(ctx, httpClient, cartURL, paymentURL)
 		}
 	}
 }
 
-func runCheckoutSession(ctx context.Context, c *http.Client, base string) {
-	cartID, err := createCart(ctx, c, base)
+// runCheckoutSession exercises the full SmartHub flow:
+//   create cart → add items → cart checkout → payment charge.
+// The cart and payment services are independent in this demo, so we have
+// to invoke both legs explicitly — but both calls share the same trace
+// because the otelhttp transport propagates traceparent. Result: each
+// session yields one multi-service trace whose payment leg fails with
+// SQLSTATE 53100 when dbaas.disk-full is active.
+func runCheckoutSession(ctx context.Context, c *http.Client, cartBase, paymentBase string) {
+	cartID, err := createCart(ctx, c, cartBase)
 	if err != nil {
 		slog.WarnContext(ctx, "create cart failed", "error", err)
 		return
 	}
+	total := 0.0
 	itemCount := rand.Intn(2) + 1
 	for i := 0; i < itemCount; i++ {
 		prod := products[rand.Intn(len(products))]
-		if err := addItem(ctx, c, base, cartID, prod, rand.Intn(2)+1); err != nil {
+		qty := rand.Intn(2) + 1
+		if err := addItem(ctx, c, cartBase, cartID, prod, qty); err != nil {
 			slog.WarnContext(ctx, "add item failed", "error", err, "product", prod)
 			return
 		}
+		// Approximate per-item price for the synthetic charge amount.
+		total += float64(qty) * (10.0 + rand.Float64()*50.0)
 	}
-	if err := checkout(ctx, c, base, cartID); err != nil {
-		// Checkout failures are expected when dbaas.disk-full is active —
-		// log at debug to keep the steady-state log line quiet.
+	if err := checkout(ctx, c, cartBase, cartID); err != nil {
 		slog.DebugContext(ctx, "checkout failed", "error", err, "cart_id", cartID)
+		return
 	}
+	if err := chargePayment(ctx, c, paymentBase, cartID, total); err != nil {
+		// Expected when dbaas.disk-full is active — log at debug to keep
+		// steady-state logs clean.
+		slog.DebugContext(ctx, "charge failed", "error", err, "cart_id", cartID)
+	}
+}
+
+// chargePayment calls POST /api/payments/charge — the call that exercises
+// RecordOrder() in services/payment/db.go, which is what returns SQLSTATE
+// 53100 when the dbaas.disk-full knob is active.
+func chargePayment(ctx context.Context, c *http.Client, base, orderID string, amount float64) error {
+	body, _ := json.Marshal(map[string]any{
+		"order_id":  orderID,
+		"amount":    amount,
+		"processor": "PuppyPay",
+	})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+		base+"/api/payments/charge", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("charge returned %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // createCart calls POST /api/cart/create. Cart requires a customer_id —
