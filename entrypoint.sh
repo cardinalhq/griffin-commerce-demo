@@ -41,6 +41,12 @@ case "$SERVICE_NAME" in
     # OTLP metric emitter that polls the controlplane for fault knobs.
     /app/bin/griffin dbaas
     ;;
+  loadgen)
+    # Continuous low-rate traffic against the cart service so the
+    # customer-persona side of the Airtel demo has live traces to
+    # investigate. No HTTP server — outbound client only.
+    /app/bin/griffin loadgen
+    ;;
   *)
     echo "Unknown service: $SERVICE_NAME"
     echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane, dbaas"
