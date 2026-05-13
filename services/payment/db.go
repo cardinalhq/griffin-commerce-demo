@@ -57,10 +57,18 @@ func RecordOrder(ctx context.Context, orderID string, amount float64) error {
 	ctx, span := tracer.Start(ctx, "db.write", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 
+	// db.name is set to the DBaaS instance id (hdfc-prod-03) — not the
+	// logical schema name — so the servicegraph connector labels the DB
+	// virtual node with the instance the DBaaS admin operates on. The
+	// connector prefers db.name when naming DB virtual nodes, regardless
+	// of virtual_node_peer_attributes ordering, so this is the lever that
+	// actually changes the displayed label. The logical schema is
+	// preserved in db.namespace for anyone inspecting the span directly.
 	span.SetAttributes(
 		attribute.String("db.system", "postgresql"),
 		attribute.String("db.instance.id", dbInstanceID()),
-		attribute.String("db.name", "smarthub"),
+		attribute.String("db.name", dbInstanceID()),
+		attribute.String("db.namespace", "smarthub"),
 		attribute.String("db.operation", "INSERT"),
 		attribute.String("db.statement", "INSERT INTO orders (order_id, amount) VALUES ($1, $2)"),
 	)
