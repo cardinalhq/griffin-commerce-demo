@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // dbDiskFullActive flips when the dbaas.disk-full knob is active. Set by
@@ -49,7 +50,11 @@ var errDBDiskFull = errors.New(`pq: could not extend file "base/16384/24779": No
 // red span they drill into.
 func RecordOrder(ctx context.Context, orderID string, amount float64) error {
 	tracer := otel.Tracer("github.com/cardinalhq/griffin-commerce-demo/services/payment")
-	ctx, span := tracer.Start(ctx, "db.write")
+	// SpanKindClient is required so the servicegraph connector treats this
+	// as an outbound call and emits a payment → DB edge (named via
+	// db.instance.id in virtual_node_peer_attributes). Default Internal
+	// kind would be ignored by the connector.
+	ctx, span := tracer.Start(ctx, "db.write", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 
 	span.SetAttributes(
