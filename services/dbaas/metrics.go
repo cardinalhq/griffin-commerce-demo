@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -15,568 +17,919 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// resourceAttrs are constants for this DBaaS plane. They ride as point
-// attributes on every observation so lakerunner sees them as labels. (Could
-// promote to OTel Resource once common.SetupTelemetry plumbs addlAttrs.)
-var resourceAttrs = []attribute.KeyValue{
-	attribute.String("cloud.provider", "airtel"),
-	attribute.String("cloud.region", "in-mumbai-1"),
-	attribute.String("cluster", "dbaas-mumbai-prod-01"),
-	attribute.String("service.type", "dbaas"),
-}
-
 const instrumentScope = "github.com/cardinalhq/griffin-commerce-demo/services/dbaas"
 
-// queryOps are the operation labels we fan db.queries_total / latency over.
-var queryOps = []string{"select", "insert", "update", "delete", "ddl"}
+// Metric keys — used by scenario.go to address impact specs. Strings match
+// the spec metric names so logs/dashboards can grep them.
+const (
+	// Tenant SLO (spec §7)
+	MetricTenantSLOBurnRate    = "tenant_slo_burn_rate"
+	MetricTenantSLOCompliance  = "tenant_slo_compliance_ratio"
+	MetricTenantSLOErrorBudget = "tenant_slo_error_budget_remaining_ratio"
 
-// storageOps are the labels we fan db.storage.latency_seconds over.
-var storageOps = []string{"read", "write"}
+	// Postgres (spec §8)
+	MetricPGUp                  = "pg_up"
+	MetricPGNumBackends         = "pg_stat_database_numbackends"
+	MetricPGXactCommitTotal     = "pg_stat_database_xact_commit_total"
+	MetricPGXactRollbackTotal   = "pg_stat_database_xact_rollback_total"
+	MetricPGTupFetchedTotal     = "pg_stat_database_tup_fetched_total"
+	MetricPGBlksReadTotal       = "pg_stat_database_blks_read_total"
+	MetricPGBlksHitTotal        = "pg_stat_database_blks_hit_total"
+	MetricPGCacheHitRatio       = "pg_database_cache_hit_ratio"
+	MetricPGQueryLatencyBucket  = "pg_query_latency_seconds_bucket"
+	MetricPGQueryLatencyCount   = "pg_query_latency_seconds_count"
+	MetricPGQueryLatencySum     = "pg_query_latency_seconds_sum"
+	MetricPGQueryLatencyP95Ms   = "pg_query_latency_p95_ms"
+	MetricPGLocksCount          = "pg_locks_count"
+	MetricPGActivityCount       = "pg_stat_activity_count"
+	MetricPGCheckpointWriteRate = "pg_checkpoint_write_time_seconds_total"
+	MetricPGCheckpointSyncRate  = "pg_checkpoint_sync_time_seconds_total"
+	MetricPGWalBytesTotal       = "pg_wal_bytes_total"
+	MetricPGReplicationLag      = "pg_replication_lag_seconds"
 
-// pgErrorCodes used in non-fault baseline error emission. We add 53100
-// dynamically when the disk-full knob is active.
-var pgErrorCodes = []string{"40001", "23505", "08006"} // serialization, unique violation, conn lost
+	// Linux VM (spec §9)
+	MetricNodeCPUSecondsTotal = "node_cpu_seconds_total"
+	MetricNodeIOWaitPct       = "node_cpu_iowait_percent"
+	MetricNodeCPUStealPct     = "node_cpu_steal_percent"
+	MetricNodeMemAvailable    = "node_memory_MemAvailable_bytes"
+	MetricNodeDiskReadTime    = "node_disk_read_time_seconds_total"
+	MetricNodeDiskWriteTime   = "node_disk_write_time_seconds_total"
+	MetricNodeDiskIOTime      = "node_disk_io_time_seconds_total"
+	MetricNodeDiskIONow       = "node_disk_io_now"
+	MetricNodeFilesystemAvail = "node_filesystem_avail_bytes"
+	MetricNodeNetRxDrop       = "node_network_receive_drop_total"
+	MetricNodeNetTxDrop       = "node_network_transmit_drop_total"
+	MetricNodeLoad1           = "node_load1"
+	MetricNodeContextSwitches = "node_context_switches_total"
+	MetricNodePSwapInRate     = "node_vmstat_pswpin"
+	MetricNodePSwapOutRate    = "node_vmstat_pswpout"
+	MetricNodeMemPressureRate = "node_pressure_memory_waiting_seconds_total"
 
-// instruments holds every registered metric instrument. Keeping them in one
-// struct keeps the callback signature manageable.
+	// VMware VM (spec §10)
+	MetricVMwareVMPowerState   = "vmware_vm_power_state"
+	MetricVMwareVMCPUUsagePct  = "vmware_vm_cpu_usage_percent"
+	MetricVMwareVMCPUReadyMs   = "vmware_vm_cpu_ready_summation_ms"
+	MetricVMwareVMMemUsagePct  = "vmware_vm_memory_usage_percent"
+	MetricVMwareVMMemBallooned = "vmware_vm_memory_ballooned_bytes"
+	MetricVMwareVMDiskReadLat  = "vmware_vm_disk_read_latency_ms"
+	MetricVMwareVMDiskWriteLat = "vmware_vm_disk_write_latency_ms"
+	MetricVMwareVMDiskUsage    = "vmware_vm_disk_usage_bytes"
+	MetricVMwareVMNetRxBytes   = "vmware_vm_net_received_bytes_total"
+	MetricVMwareVMNetTxBytes   = "vmware_vm_net_transmitted_bytes_total"
+
+	// ESXi host (spec §11)
+	MetricVMwareHostCPUUsagePct  = "vmware_host_cpu_usage_percent"
+	MetricVMwareHostMemUsagePct  = "vmware_host_memory_usage_percent"
+	MetricVMwareHostDiskReadLat  = "vmware_host_disk_read_latency_ms"
+	MetricVMwareHostDiskWriteLat = "vmware_host_disk_write_latency_ms"
+	MetricVMwareHostNetRxDropped = "vmware_host_net_dropped_rx_total"
+	MetricVMwareHostNetTxDropped = "vmware_host_net_dropped_tx_total"
+	MetricVMwareHostVMCount      = "vmware_host_vm_count"
+
+	// Datastore (spec §12)
+	MetricDSCapacity   = "vmware_datastore_capacity_bytes"
+	MetricDSFreeBytes  = "vmware_datastore_free_bytes"
+	MetricDSReadLat    = "vmware_datastore_read_latency_ms"
+	MetricDSWriteLat   = "vmware_datastore_write_latency_ms"
+	MetricDSIOPSRead   = "vmware_datastore_iops_read"
+	MetricDSIOPSWrite  = "vmware_datastore_iops_write"
+	MetricDSQueueDepth = "vmware_datastore_queue_depth"
+
+	// Probe (spec §13)
+	MetricAirtelProbeSuccessRate = "airtel_probe_success_ratio"
+	MetricAirtelProbeLatencyMs   = "airtel_probe_latency_ms"
+
+	// Alert (spec §14)
+	MetricCardinalAlertActive = "cardinal_alert_active"
+)
+
+// pgLatencyBuckets are the `le` upper-bounds for pg_query_latency_seconds_bucket
+// per spec §8.9.
+var pgLatencyBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5}
+
+var pgQueryClasses = []string{"oltp_read", "oltp_write", "reporting", "background"}
+
+var pgLockModes = []string{"AccessShareLock", "RowExclusiveLock", "ShareLock", "ExclusiveLock"}
+
 type instruments struct {
-	// Availability + connections (6)
-	dbUp                metric.Float64ObservableGauge
-	connectionsActive   metric.Float64ObservableGauge
-	connectionsIdle     metric.Float64ObservableGauge
-	connectionsMax      metric.Float64ObservableGauge
-	connectionsRejected metric.Float64ObservableCounter
-	connectionsWaiting  metric.Float64ObservableGauge
+	// Tenant SLO
+	tenantSLOBurn        metric.Float64ObservableGauge
+	tenantSLOCompliance  metric.Float64ObservableGauge
+	tenantSLOErrorBudget metric.Float64ObservableGauge
 
-	// Pooler (4)
-	poolerClientActive  metric.Float64ObservableGauge
-	poolerClientWaiting metric.Float64ObservableGauge
-	poolerServerActive  metric.Float64ObservableGauge
-	poolerExhausted     metric.Float64ObservableCounter
+	// Postgres
+	pgUp              metric.Float64ObservableGauge
+	pgNumBackends     metric.Float64ObservableGauge
+	pgXactCommit      metric.Float64ObservableCounter
+	pgXactRollback    metric.Float64ObservableCounter
+	pgTupFetched      metric.Float64ObservableCounter
+	pgBlksRead        metric.Float64ObservableCounter
+	pgBlksHit         metric.Float64ObservableCounter
+	pgCacheHitRatio   metric.Float64ObservableGauge
+	pgLatencyBucket   metric.Float64ObservableCounter
+	pgLatencyCount    metric.Float64ObservableCounter
+	pgLatencySum      metric.Float64ObservableCounter
+	pgLatencyP95      metric.Float64ObservableGauge
+	pgLocksCount      metric.Float64ObservableGauge
+	pgActivityCount   metric.Float64ObservableGauge
+	pgCheckpointWrite metric.Float64ObservableCounter
+	pgCheckpointSync  metric.Float64ObservableCounter
+	pgWalBytes        metric.Float64ObservableCounter
+	pgReplicationLag  metric.Float64ObservableGauge
 
-	// Workload aggregates (7 logical / 9 instruments — query.duration is a quantile family)
-	txCommitted        metric.Float64ObservableCounter
-	txRolledBack       metric.Float64ObservableCounter
-	queriesTotal       metric.Float64ObservableCounter
-	queryErrors        metric.Float64ObservableCounter
-	queryDuration      metric.Float64ObservableGauge
-	queryDurationCount metric.Float64ObservableCounter
-	queryDurationSum   metric.Float64ObservableCounter
-	queriesSlow        metric.Float64ObservableCounter
-	queriesLongRunning metric.Float64ObservableGauge
+	// Linux VM
+	nodeCPUSeconds      metric.Float64ObservableCounter
+	nodeIOWaitPct       metric.Float64ObservableGauge
+	nodeCPUStealPct     metric.Float64ObservableGauge
+	nodeMemAvailable    metric.Float64ObservableGauge
+	nodeDiskReadTime    metric.Float64ObservableCounter
+	nodeDiskWriteTime   metric.Float64ObservableCounter
+	nodeDiskIOTime      metric.Float64ObservableCounter
+	nodeDiskIONow       metric.Float64ObservableGauge
+	nodeFsAvail         metric.Float64ObservableGauge
+	nodeNetRxDrop       metric.Float64ObservableCounter
+	nodeNetTxDrop       metric.Float64ObservableCounter
+	nodeLoad1           metric.Float64ObservableGauge
+	nodeContextSwitches metric.Float64ObservableCounter
+	nodePSwapIn         metric.Float64ObservableCounter
+	nodePSwapOut        metric.Float64ObservableCounter
+	nodeMemPressure     metric.Float64ObservableCounter
 
-	// Locks (3)
-	deadlocks   metric.Float64ObservableCounter
-	lockWaitSec metric.Float64ObservableCounter
-	lockWaiters metric.Float64ObservableGauge
+	// VMware VM
+	vmwareVMPowerState   metric.Float64ObservableGauge
+	vmwareVMCPUUsagePct  metric.Float64ObservableGauge
+	vmwareVMCPUReadyMs   metric.Float64ObservableGauge
+	vmwareVMMemUsagePct  metric.Float64ObservableGauge
+	vmwareVMMemBallooned metric.Float64ObservableGauge
+	vmwareVMDiskReadLat  metric.Float64ObservableGauge
+	vmwareVMDiskWriteLat metric.Float64ObservableGauge
+	vmwareVMDiskUsage    metric.Float64ObservableGauge
+	vmwareVMNetRx        metric.Float64ObservableCounter
+	vmwareVMNetTx        metric.Float64ObservableCounter
 
-	// Cache + temp (3)
-	bufferHitRatio metric.Float64ObservableGauge
-	indexHitRatio  metric.Float64ObservableGauge
-	tempBytes      metric.Float64ObservableCounter
+	// Host
+	vmwareHostCPUUsagePct  metric.Float64ObservableGauge
+	vmwareHostMemUsagePct  metric.Float64ObservableGauge
+	vmwareHostDiskReadLat  metric.Float64ObservableGauge
+	vmwareHostDiskWriteLat metric.Float64ObservableGauge
+	vmwareHostNetRxDropped metric.Float64ObservableCounter
+	vmwareHostNetTxDropped metric.Float64ObservableCounter
+	vmwareHostVMCount      metric.Float64ObservableGauge
 
-	// WAL + replication (4)
-	walBytes           metric.Float64ObservableCounter
-	walLagBytes        metric.Float64ObservableGauge
-	walLagSeconds      metric.Float64ObservableGauge
-	replicationSlotLag metric.Float64ObservableGauge
+	// Datastore
+	dsCapacity   metric.Float64ObservableGauge
+	dsFreeBytes  metric.Float64ObservableGauge
+	dsReadLat    metric.Float64ObservableGauge
+	dsWriteLat   metric.Float64ObservableGauge
+	dsIOPSRead   metric.Float64ObservableGauge
+	dsIOPSWrite  metric.Float64ObservableGauge
+	dsQueueDepth metric.Float64ObservableGauge
 
-	// Maintenance (4 logical / 6 instruments)
-	checkpointTotal         metric.Float64ObservableCounter
-	checkpointDuration      metric.Float64ObservableGauge
-	checkpointDurationCount metric.Float64ObservableCounter
-	checkpointDurationSum   metric.Float64ObservableCounter
-	bgwriterBuffersWritten  metric.Float64ObservableCounter
-	autovacuumDuration      metric.Float64ObservableGauge
-	autovacuumDurationCount metric.Float64ObservableCounter
-	autovacuumDurationSum   metric.Float64ObservableCounter
+	// Probe
+	probeSuccessRate metric.Float64ObservableGauge
+	probeLatencyMs   metric.Float64ObservableGauge
 
-	// Storage (7 logical / 9 instruments)
-	storageUsed            metric.Float64ObservableGauge
-	storageCapacity        metric.Float64ObservableGauge
-	storageIOPSRead        metric.Float64ObservableGauge
-	storageIOPSWrite       metric.Float64ObservableGauge
-	storageIOPSProvisioned metric.Float64ObservableGauge
-	storageLatency         metric.Float64ObservableGauge
-	storageLatencyCount    metric.Float64ObservableCounter
-	storageLatencySum      metric.Float64ObservableCounter
-	volumeHealth           metric.Float64ObservableGauge
-
-	// Host (2)
-	hostCPU    metric.Float64ObservableGauge
-	hostMemory metric.Float64ObservableGauge
-
-	// Control plane (2)
-	failoverEvents       metric.Float64ObservableCounter
-	backupLastSuccessAge metric.Float64ObservableGauge
+	// Alert
+	alertActive metric.Float64ObservableGauge
 }
 
-// RegisterMetrics builds all 42 metrics and a single callback that walks
-// the fleet once per collection cycle.
-func RegisterMetrics(ctx context.Context, states []*InstanceState) error {
+// emitPGHistogram is the env-controlled cardinality switch for the
+// pg_query_latency_seconds_bucket family. Default on; flip
+// DBAAS_EMIT_PG_HIST=false at deploy time if the demo cap is tight.
+func emitPGHistogram() bool {
+	v := os.Getenv("DBAAS_EMIT_PG_HIST")
+	return v == "" || v == "true" || v == "1"
+}
+
+// RegisterMetrics builds every instrument and registers a single async
+// callback that walks the catalog on the SDK's collection cadence.
+func RegisterMetrics(ctx context.Context, catalog *Catalog, scenario *Scenario) error {
 	meter := otel.Meter(instrumentScope)
 	ins := &instruments{}
-
 	if err := registerAll(meter, ins); err != nil {
 		return err
 	}
-
-	deps := allObservables(ins)
+	obs := allObservables(ins)
 	_, err := meter.RegisterCallback(
-		func(ctx context.Context, observer metric.Observer) error {
+		func(_ context.Context, o metric.Observer) error {
 			now := time.Now()
-			for _, st := range states {
-				observeInstance(observer, ins, st, now)
+			for _, t := range catalog.Tenants {
+				observeTenant(o, ins, t, scenario, now)
+				observeProbe(o, ins, t, scenario, now)
 			}
+			for _, pg := range catalog.PGInstances {
+				observePG(o, ins, pg, scenario, now)
+			}
+			for _, vm := range catalog.VMs {
+				observeLinuxVM(o, ins, vm, scenario, now)
+				observeVMwareVM(o, ins, vm, scenario, now)
+			}
+			for _, h := range catalog.Hosts {
+				observeHost(o, ins, h, scenario, catalog, now)
+			}
+			for _, d := range catalog.Datastores {
+				observeDatastore(o, ins, d, scenario, now)
+			}
+			observeAlerts(o, ins, scenario, catalog, now)
 			return nil
 		},
-		deps...,
+		obs...,
 	)
 	if err != nil {
 		return fmt.Errorf("register dbaas callback: %w", err)
 	}
-
-	slog.InfoContext(ctx, "DBaaS metrics registered",
-		"instruments_logical", 42,
-		"instances", len(states),
+	slog.InfoContext(ctx, "Airtel telemetry simulator metrics registered",
+		"tenants", len(catalog.Tenants),
+		"pg_instances", len(catalog.PGInstances),
+		"vms", len(catalog.VMs),
+		"hosts", len(catalog.Hosts),
+		"datastores", len(catalog.Datastores),
+		"emit_pg_histogram", emitPGHistogram(),
 	)
 	return nil
 }
 
-// allObservables returns every instrument as a metric.Observable so they
-// can be passed to RegisterCallback as dependencies.
 func allObservables(ins *instruments) []metric.Observable {
 	return []metric.Observable{
-		ins.dbUp, ins.connectionsActive, ins.connectionsIdle, ins.connectionsMax,
-		ins.connectionsRejected, ins.connectionsWaiting,
-		ins.poolerClientActive, ins.poolerClientWaiting, ins.poolerServerActive, ins.poolerExhausted,
-		ins.txCommitted, ins.txRolledBack, ins.queriesTotal, ins.queryErrors,
-		ins.queryDuration, ins.queryDurationCount, ins.queryDurationSum,
-		ins.queriesSlow, ins.queriesLongRunning,
-		ins.deadlocks, ins.lockWaitSec, ins.lockWaiters,
-		ins.bufferHitRatio, ins.indexHitRatio, ins.tempBytes,
-		ins.walBytes, ins.walLagBytes, ins.walLagSeconds, ins.replicationSlotLag,
-		ins.checkpointTotal, ins.checkpointDuration, ins.checkpointDurationCount, ins.checkpointDurationSum,
-		ins.bgwriterBuffersWritten,
-		ins.autovacuumDuration, ins.autovacuumDurationCount, ins.autovacuumDurationSum,
-		ins.storageUsed, ins.storageCapacity, ins.storageIOPSRead, ins.storageIOPSWrite,
-		ins.storageIOPSProvisioned, ins.storageLatency, ins.storageLatencyCount, ins.storageLatencySum,
-		ins.volumeHealth,
-		ins.hostCPU, ins.hostMemory,
-		ins.failoverEvents, ins.backupLastSuccessAge,
+		ins.tenantSLOBurn, ins.tenantSLOCompliance, ins.tenantSLOErrorBudget,
+		ins.pgUp, ins.pgNumBackends, ins.pgXactCommit, ins.pgXactRollback,
+		ins.pgTupFetched, ins.pgBlksRead, ins.pgBlksHit, ins.pgCacheHitRatio,
+		ins.pgLatencyBucket, ins.pgLatencyCount, ins.pgLatencySum, ins.pgLatencyP95,
+		ins.pgLocksCount, ins.pgActivityCount,
+		ins.pgCheckpointWrite, ins.pgCheckpointSync, ins.pgWalBytes, ins.pgReplicationLag,
+		ins.nodeCPUSeconds, ins.nodeIOWaitPct, ins.nodeCPUStealPct, ins.nodeMemAvailable,
+		ins.nodeDiskReadTime, ins.nodeDiskWriteTime, ins.nodeDiskIOTime, ins.nodeDiskIONow,
+		ins.nodeFsAvail, ins.nodeNetRxDrop, ins.nodeNetTxDrop,
+		ins.nodeLoad1, ins.nodeContextSwitches, ins.nodePSwapIn, ins.nodePSwapOut,
+		ins.nodeMemPressure,
+		ins.vmwareVMPowerState, ins.vmwareVMCPUUsagePct, ins.vmwareVMCPUReadyMs,
+		ins.vmwareVMMemUsagePct, ins.vmwareVMMemBallooned,
+		ins.vmwareVMDiskReadLat, ins.vmwareVMDiskWriteLat, ins.vmwareVMDiskUsage,
+		ins.vmwareVMNetRx, ins.vmwareVMNetTx,
+		ins.vmwareHostCPUUsagePct, ins.vmwareHostMemUsagePct,
+		ins.vmwareHostDiskReadLat, ins.vmwareHostDiskWriteLat,
+		ins.vmwareHostNetRxDropped, ins.vmwareHostNetTxDropped, ins.vmwareHostVMCount,
+		ins.dsCapacity, ins.dsFreeBytes, ins.dsReadLat, ins.dsWriteLat,
+		ins.dsIOPSRead, ins.dsIOPSWrite, ins.dsQueueDepth,
+		ins.probeSuccessRate, ins.probeLatencyMs,
+		ins.alertActive,
 	}
 }
 
-// instanceAttrs is the base label set for one instance (resource + per-instance).
-func instanceAttrs(st *InstanceState) []attribute.KeyValue {
-	inst := st.Inst
-	attrs := make([]attribute.KeyValue, 0, len(resourceAttrs)+7)
-	attrs = append(attrs, resourceAttrs...)
-	attrs = append(attrs,
-		// `customer.name` (not `customer.id`) — the CardinalHQ collector
-		// pipeline consumes `customer.id` for tenancy routing and strips it
-		// from the surfaced label set, so dashboards can't filter on it.
-		// `customer.name` is just a free attribute that survives end-to-end
-		// as the `customer_name` label in lakerunner.
-		attribute.String("customer.name", inst.CustomerID),
-		attribute.String("db_id", inst.DBID),
-		attribute.String("customer.tier", inst.Tier),
-		attribute.String("role", inst.Role),
-		attribute.String("pg_version", inst.PgVersion),
-		attribute.String("storage_class", st.Storage.Name),
-		attribute.String("volume_id", inst.DBID+"-vol-a"),
+// -- attribute builders --
+
+func tenantAttrs(t *Tenant) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("tenant_id", t.TenantID),
+		attribute.String("customer_id", t.CustomerID),
+		attribute.String("account_id", t.AccountID),
+		attribute.String("service_tier", t.Tier),
+		attribute.String("environment", t.Environment),
+		attribute.String("region", t.Region),
+		attribute.String("az", t.AZ),
+	}
+}
+
+func tenantSLOAttrs(t *Tenant) []attribute.KeyValue {
+	return append(tenantAttrs(t),
+		attribute.String("slo_name", t.SLOName),
+		attribute.String("managed_service", "postgres"),
 	)
+}
+
+func pgAttrs(pg *PGInstance) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String("pg_instance", pg.Name),
+		attribute.String("pg_cluster", pg.Cluster),
+		attribute.String("pg_role", pg.Role),
+		attribute.String("pg_version", pg.Version),
+		attribute.String("database_name", pg.Database),
+		attribute.String("port", strconv.Itoa(pg.Port)),
+		attribute.String("tenant_id", pg.Tenant.TenantID),
+		attribute.String("customer_id", pg.Tenant.CustomerID),
+	}
+	if pg.VM != nil {
+		attrs = append(attrs,
+			attribute.String("vm_name", pg.VM.Name),
+			attribute.String("vm_uuid", pg.VM.UUID),
+		)
+		if pg.VM.Host != nil {
+			attrs = append(attrs,
+				attribute.String("esxi_host_name", pg.VM.Host.Name),
+				attribute.String("esxi_host_id", pg.VM.Host.ID),
+			)
+		}
+		if pg.VM.Datastore != nil {
+			attrs = append(attrs,
+				attribute.String("datastore_name", pg.VM.Datastore.Name),
+				attribute.String("datastore_id", pg.VM.Datastore.ID),
+			)
+		}
+	}
 	return attrs
 }
 
-// observeInstance computes and emits every metric value for one instance at
-// the given collection time. Counter state is integrated forward under the
-// per-instance mutex.
-func observeInstance(o metric.Observer, ins *instruments, st *InstanceState, now time.Time) {
-	st.mu.Lock()
-	dt := now.Sub(st.lastTick).Seconds()
-	if dt < 0.001 {
-		dt = 0.001 // first tick or clock skew; avoid zero
+func vmAttrs(vm *VM) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String("vm_name", vm.Name),
+		attribute.String("vm_uuid", vm.UUID),
+		attribute.String("vm_moid", vm.MOID),
+		attribute.String("workload_role", vm.WorkloadRole),
+		attribute.String("os", vm.OS),
+		attribute.String("vcenter_name", vcenterName),
+		attribute.String("cluster", vm.Cluster.Name),
+		attribute.String("region", vm.Region),
+		attribute.String("az", vm.AZ),
 	}
-	st.lastTick = now
-	defer st.mu.Unlock()
-
-	base := instanceAttrs(st)
-	seed := hashSeed(st.Inst.DBID)
-	loadMult := load(now, seed)
-	diskFull := st.diskFullActive.Load()
-
-	// --- Availability ---
-	// AvailabilityFloor < 1.0 means the customer's tier has occasional
-	// flaps. Deterministic per-instance: stripes (1 - floor) of instances
-	// report db_up=0 at any given time so the per-customer avg matches
-	// the floor. Premium tiers (floor=1.0) stay solid 1.0.
-	up := 1.0
-	if st.Profile.AvailabilityFloor < 1.0 {
-		seed := hashSeed(st.Inst.DBID)
-		flapSlot := seed % 1000
-		threshold := uint64((1.0 - st.Profile.AvailabilityFloor) * 1000)
-		if flapSlot < threshold {
-			up = 0
-		}
+	if vm.Tenant != nil {
+		attrs = append(attrs,
+			attribute.String("tenant_id", vm.Tenant.TenantID),
+			attribute.String("customer_id", vm.Tenant.CustomerID),
+		)
 	}
-	if !st.Inst.Up {
-		up = 0
+	if vm.Host != nil {
+		attrs = append(attrs,
+			attribute.String("esxi_host_name", vm.Host.Name),
+			attribute.String("esxi_host_id", vm.Host.ID),
+		)
 	}
-	o.ObserveFloat64(ins.dbUp, up, metric.WithAttributes(base...))
-
-	// --- Connections ---
-	maxConn := 200.0
-	active := st.BaselineConnections * loadMult
-	if active > maxConn*0.95 {
-		active = maxConn * 0.95
+	if vm.Datastore != nil {
+		attrs = append(attrs,
+			attribute.String("datastore_name", vm.Datastore.Name),
+			attribute.String("datastore_id", vm.Datastore.ID),
+		)
 	}
-	idle := math.Max(0, st.BaselineConnections*0.4-active*0.05)
-	waiting := 0.0
-	if diskFull {
-		waiting = 12 + 10*loadMult // backed up at the pooler while writes error
-	}
-	o.ObserveFloat64(ins.connectionsActive, active, metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.connectionsIdle, idle, metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.connectionsMax, maxConn, metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.connectionsWaiting, waiting, metric.WithAttributes(base...))
-
-	// connections.rejected_total — small baseline, spike when disk-full
-	for _, reason := range []string{"max_connections", "auth", "timeout"} {
-		rate := 0.005 * loadMult // ~0.5% / sec baseline per reason
-		if diskFull && reason == "timeout" {
-			rate += 1.5 // timeouts from blocked writes
-		}
-		st.cumConnRejected[reason] += int64(rate * dt)
-		o.ObserveFloat64(ins.connectionsRejected, float64(st.cumConnRejected[reason]),
-			metric.WithAttributes(append(base, attribute.String("reason", reason))...))
-	}
-
-	// --- Pooler ---
-	o.ObserveFloat64(ins.poolerClientActive, active*1.05, metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.poolerClientWaiting, waiting, metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.poolerServerActive, math.Min(active*0.9, 50), metric.WithAttributes(base...))
-	if diskFull {
-		st.cumPoolExhaust += int64(0.3 * dt)
-	}
-	o.ObserveFloat64(ins.poolerExhausted, float64(st.cumPoolExhaust), metric.WithAttributes(base...))
-
-	// --- Workload aggregates ---
-	totalQPS := st.BaselineQPS * loadMult
-	writeQPS := totalQPS * st.BaselineWriteFraction
-	readQPS := totalQPS - writeQPS
-
-	// Per-op increments. Split writes across insert/update/delete proportionally.
-	opSplits := map[string]float64{
-		"select": readQPS,
-		"insert": writeQPS * 0.55,
-		"update": writeQPS * 0.35,
-		"delete": writeQPS * 0.08,
-		"ddl":    writeQPS * 0.02,
-	}
-	for _, op := range queryOps {
-		st.cumQueries[op] += int64(opSplits[op] * dt)
-		o.ObserveFloat64(ins.queriesTotal, float64(st.cumQueries[op]),
-			metric.WithAttributes(append(base, attribute.String("op", op))...))
-	}
-
-	// Tx counts roughly follow QPS (one tx per ~5 queries).
-	st.cumTxCommitted += int64(totalQPS / 5 * dt)
-	st.cumTxRolledBack += int64(totalQPS / 5 * 0.005 * dt)
-	if diskFull {
-		st.cumTxRolledBack += int64(writeQPS * dt) // every write tx rolls back
-	}
-	o.ObserveFloat64(ins.txCommitted, float64(st.cumTxCommitted), metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.txRolledBack, float64(st.cumTxRolledBack), metric.WithAttributes(base...))
-
-	// Query errors — baseline noise across the three normal codes.
-	// Per-customer BaselineErrorRate sets the fraction of queries that
-	// surface as transient errors. Banks: ~0.0001 (99.99% success);
-	// commodity tiers: ~0.001 (99.9% success).
-	errRate := st.Profile.BaselineErrorRate
-	if errRate <= 0 {
-		errRate = 0.0005
-	}
-	for _, code := range pgErrorCodes {
-		st.cumQueryErrors[code] += int64(errRate * totalQPS * dt)
-		o.ObserveFloat64(ins.queryErrors, float64(st.cumQueryErrors[code]),
-			metric.WithAttributes(append(base, attribute.String("error_code", code))...))
-	}
-	// 53100 disk-full errors — only when the knob is active on this instance.
-	if diskFull {
-		st.cumQueryErrors["53100"] += int64(writeQPS * dt)
-	}
-	o.ObserveFloat64(ins.queryErrors, float64(st.cumQueryErrors["53100"]),
-		metric.WithAttributes(append(base, attribute.String("error_code", "53100"))...))
-
-	// Slow queries (>1s threshold) — small fraction of total.
-	st.cumSlowQueries += int64(0.002 * totalQPS * dt)
-	o.ObserveFloat64(ins.queriesSlow, float64(st.cumSlowQueries), metric.WithAttributes(base...))
-
-	// Long-running queries (>60s, gauge) — usually 0; goes up when disk-full backs things up.
-	longRunning := 0.0
-	if diskFull {
-		longRunning = 3
-	}
-	o.ObserveFloat64(ins.queriesLongRunning, longRunning, metric.WithAttributes(base...))
-
-	// Query latency quantile family — by op.
-	// Per-customer BaselineLatencyMult scales the op-baseline tuple so the
-	// p99 Query Latency tile reads distinctly different across customers:
-	// banks ~0.7× (tight query plans), ERP / analytics ~2.5× (table scans).
-	latMult := st.Profile.BaselineLatencyMult
-	if latMult <= 0 {
-		latMult = 1.0
-	}
-	for _, op := range queryOps {
-		// Normal: select ~5ms p50, ~25ms p95, ~80ms p99. Write ops higher.
-		p50, p95, p99 := baselineQueryLatency(op)
-		p50 *= latMult
-		p95 *= latMult
-		p99 *= latMult
-		if diskFull && (op == "insert" || op == "update" || op == "delete") {
-			p99 *= 12 // writes pile up before failing
-			p95 *= 6
-		}
-		o.ObserveFloat64(ins.queryDuration, p50,
-			metric.WithAttributes(append(base, attribute.String("op", op), attribute.String("quantile", "0.5"))...))
-		o.ObserveFloat64(ins.queryDuration, p95,
-			metric.WithAttributes(append(base, attribute.String("op", op), attribute.String("quantile", "0.95"))...))
-		o.ObserveFloat64(ins.queryDuration, p99,
-			metric.WithAttributes(append(base, attribute.String("op", op), attribute.String("quantile", "0.99"))...))
-		st.cumQueryLatencyCount[op] += int64(opSplits[op] * dt)
-		st.cumQueryLatencySum[op] += opSplits[op] * dt * p50
-		o.ObserveFloat64(ins.queryDurationCount, float64(st.cumQueryLatencyCount[op]),
-			metric.WithAttributes(append(base, attribute.String("op", op))...))
-		o.ObserveFloat64(ins.queryDurationSum, st.cumQueryLatencySum[op],
-			metric.WithAttributes(append(base, attribute.String("op", op))...))
-	}
-
-	// --- Locks ---
-	st.cumDeadlocks += int64(0.001 * loadMult * dt)
-	o.ObserveFloat64(ins.deadlocks, float64(st.cumDeadlocks), metric.WithAttributes(base...))
-	for _, lockType := range []string{"row", "table", "advisory"} {
-		st.cumLockWaitSec += 0.05 * loadMult * dt
-		o.ObserveFloat64(ins.lockWaitSec, st.cumLockWaitSec,
-			metric.WithAttributes(append(base, attribute.String("lock_type", lockType))...))
-	}
-	waiters := math.Floor(loadMult * 0.5)
-	if diskFull {
-		waiters += 40
-	}
-	o.ObserveFloat64(ins.lockWaiters, waiters, metric.WithAttributes(base...))
-
-	// --- Cache + temp ---
-	// Cache hit ratio is per-customer flavored: banks ride a hot cache (0.99),
-	// ERP / analytics workloads scan more cold data (~0.94). Load pressure
-	// drags the ratio slightly lower; disk-full crashes it to 0.86.
-	bufferHit := st.Profile.BufferHitFloor - 0.005*math.Max(0, loadMult-1)
-	if diskFull {
-		bufferHit = 0.86
-	}
-	o.ObserveFloat64(ins.bufferHitRatio, bufferHit, metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.indexHitRatio, math.Min(0.995, bufferHit+0.02), metric.WithAttributes(base...))
-	st.cumTempBytes += int64(loadMult * 4096 * dt) // small temp file pressure
-	o.ObserveFloat64(ins.tempBytes, float64(st.cumTempBytes), metric.WithAttributes(base...))
-
-	// --- WAL + replication ---
-	walRate := st.BaselineWalBytesPerSec * loadMult
-	st.cumWalBytes += int64(walRate * dt)
-	o.ObserveFloat64(ins.walBytes, float64(st.cumWalBytes), metric.WithAttributes(base...))
-	// Replica lag — small under normal load, bigger when WAL bursts.
-	for _, replica := range []string{"replica-01", "replica-02"} {
-		lagBytes := walRate * 0.3
-		lagSec := 0.5 + 2*math.Max(0, loadMult-1.2)
-		o.ObserveFloat64(ins.walLagBytes, lagBytes,
-			metric.WithAttributes(append(base, attribute.String("replica_id", replica))...))
-		o.ObserveFloat64(ins.walLagSeconds, lagSec,
-			metric.WithAttributes(append(base, attribute.String("replica_id", replica))...))
-	}
-	for _, slot := range []string{"slot-01"} {
-		o.ObserveFloat64(ins.replicationSlotLag, walRate*0.4,
-			metric.WithAttributes(append(base, attribute.String("slot", slot))...))
-	}
-
-	// --- Maintenance ---
-	for _, kind := range []string{"timed", "requested"} {
-		st.cumCheckpoint[kind] += int64(0.005 * dt) // ~1 per ~3min
-		o.ObserveFloat64(ins.checkpointTotal, float64(st.cumCheckpoint[kind]),
-			metric.WithAttributes(append(base, attribute.String("kind", kind))...))
-	}
-	cpP50, cpP95, cpP99 := 0.4, 1.2, 2.1
-	o.ObserveFloat64(ins.checkpointDuration, cpP50, metric.WithAttributes(append(base, attribute.String("quantile", "0.5"))...))
-	o.ObserveFloat64(ins.checkpointDuration, cpP95, metric.WithAttributes(append(base, attribute.String("quantile", "0.95"))...))
-	o.ObserveFloat64(ins.checkpointDuration, cpP99, metric.WithAttributes(append(base, attribute.String("quantile", "0.99"))...))
-	st.cumCheckpointCount += int64(0.01 * dt)
-	st.cumCheckpointSum += 0.01 * dt * cpP50
-	o.ObserveFloat64(ins.checkpointDurationCount, float64(st.cumCheckpointCount), metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.checkpointDurationSum, st.cumCheckpointSum, metric.WithAttributes(base...))
-
-	st.cumBgWriter += int64(walRate / 8192 * dt) // bufferRate ≈ wal/8KB pages
-	o.ObserveFloat64(ins.bgwriterBuffersWritten, float64(st.cumBgWriter), metric.WithAttributes(base...))
-
-	avP50, avP95, avP99 := 12.0, 45.0, 120.0
-	o.ObserveFloat64(ins.autovacuumDuration, avP50, metric.WithAttributes(append(base, attribute.String("quantile", "0.5"))...))
-	o.ObserveFloat64(ins.autovacuumDuration, avP95, metric.WithAttributes(append(base, attribute.String("quantile", "0.95"))...))
-	o.ObserveFloat64(ins.autovacuumDuration, avP99, metric.WithAttributes(append(base, attribute.String("quantile", "0.99"))...))
-	st.cumAutovacuumCount += int64(0.002 * dt) // ~1 per ~8min
-	st.cumAutovacuumSum += 0.002 * dt * avP50
-	o.ObserveFloat64(ins.autovacuumDurationCount, float64(st.cumAutovacuumCount), metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.autovacuumDurationSum, st.cumAutovacuumSum, metric.WithAttributes(base...))
-
-	// --- Storage ---
-	frac := storageRamp(st, now)
-	used := frac * st.Storage.CapacityBytes
-	o.ObserveFloat64(ins.storageUsed, used, metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.storageCapacity, st.Storage.CapacityBytes, metric.WithAttributes(base...))
-
-	readIOPS := readQPS * 2 // each read ~2 IOPS at baseline
-	writeIOPS := writeQPS * 4
-	o.ObserveFloat64(ins.storageIOPSRead, readIOPS, metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.storageIOPSWrite, writeIOPS, metric.WithAttributes(base...))
-	o.ObserveFloat64(ins.storageIOPSProvisioned, st.Storage.ProvisionedIOPS, metric.WithAttributes(base...))
-
-	// Storage latency quantile family by op
-	for _, op := range storageOps {
-		p50, p95, p99 := 0.001, 0.004, 0.008 // 1ms / 4ms / 8ms baselines (seconds)
-		if frac > 0.93 {                      // near-full volumes start getting slower
-			p99 += 0.004
-		}
-		o.ObserveFloat64(ins.storageLatency, p50, metric.WithAttributes(append(base, attribute.String("op", op), attribute.String("quantile", "0.5"))...))
-		o.ObserveFloat64(ins.storageLatency, p95, metric.WithAttributes(append(base, attribute.String("op", op), attribute.String("quantile", "0.95"))...))
-		o.ObserveFloat64(ins.storageLatency, p99, metric.WithAttributes(append(base, attribute.String("op", op), attribute.String("quantile", "0.99"))...))
-		count := readIOPS
-		if op == "write" {
-			count = writeIOPS
-		}
-		st.cumStorageLatCount[op] += int64(count * dt)
-		st.cumStorageLatSum[op] += count * dt * p50
-		o.ObserveFloat64(ins.storageLatencyCount, float64(st.cumStorageLatCount[op]),
-			metric.WithAttributes(append(base, attribute.String("op", op))...))
-		o.ObserveFloat64(ins.storageLatencySum, st.cumStorageLatSum[op],
-			metric.WithAttributes(append(base, attribute.String("op", op))...))
-	}
-	o.ObserveFloat64(ins.volumeHealth, 1.0, metric.WithAttributes(base...))
-
-	// --- Host ---
-	cpu := 0.18 + 0.10*loadMult
-	if diskFull {
-		cpu += 0.05 // some thrashing
-	}
-	o.ObserveFloat64(ins.hostCPU, math.Min(0.95, cpu), metric.WithAttributes(base...))
-	mem := 4 * 1024 * 1024 * 1024 * (0.55 + 0.05*loadMult) // 4 GB baseline
-	o.ObserveFloat64(ins.hostMemory, mem, metric.WithAttributes(base...))
-
-	// --- Control plane ---
-	for _, result := range []string{"ok", "timeout", "abort"} {
-		// Failovers are rare — emit zero count baseline.
-		o.ObserveFloat64(ins.failoverEvents, float64(st.cumFailover[result]),
-			metric.WithAttributes(append(base, attribute.String("result", result))...))
-	}
-	// Last successful backup age — 6h baseline, climbs when disk-full.
-	age := 6 * 3600.0
-	if diskFull {
-		age = 26 * 3600.0 // backup takes longer when volume is near-full
-	}
-	o.ObserveFloat64(ins.backupLastSuccessAge, age, metric.WithAttributes(base...))
+	return attrs
 }
 
-// baselineQueryLatency returns p50/p95/p99 (seconds) for a given op type
-// under nominal load. SELECT is fast, writes a bit slower, DDL slowest.
-func baselineQueryLatency(op string) (float64, float64, float64) {
-	switch op {
-	case "select":
-		return 0.005, 0.025, 0.080
-	case "insert", "update":
-		return 0.008, 0.040, 0.120
-	case "delete":
-		return 0.010, 0.045, 0.130
-	case "ddl":
-		return 0.050, 0.200, 0.450
+func hostAttrs(h *Host) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("vcenter_name", vcenterName),
+		attribute.String("datacenter", datacenterDelhi),
+		attribute.String("cluster", h.Cluster.Name),
+		attribute.String("esxi_host_name", h.Name),
+		attribute.String("esxi_host_id", h.ID),
+		attribute.String("rack_id", h.RackID),
 	}
-	return 0.010, 0.050, 0.100
 }
 
-// registerAll creates every instrument. Returned errors are wrapped so the
-// caller knows which metric failed.
-func registerAll(meter metric.Meter, ins *instruments) error {
+func dsAttrs(d *Datastore) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("vcenter_name", vcenterName),
+		attribute.String("datacenter", datacenterDelhi),
+		attribute.String("datastore_name", d.Name),
+		attribute.String("datastore_id", d.ID),
+		attribute.String("datastore_type", d.Type),
+		attribute.String("storage_array", d.StorageArray),
+		attribute.String("service_tier", d.ServiceTier),
+	}
+}
+
+// -- observers --
+
+func observeTenant(o metric.Observer, ins *instruments, t *Tenant, sc *Scenario, now time.Time) {
+	t.state.mu.Lock()
+	defer t.state.mu.Unlock()
+	sel := selectorTenant(t.TenantID)
+	burn := sc.RampedValue(sel, MetricTenantSLOBurnRate, Range{0.0, 1.0}, t.state.seed, now)
+	comp := sc.RampedValue(sel, MetricTenantSLOCompliance, Range{0.9990, 1.0}, t.state.seed^1, now)
+	budget := sc.RampedValue(sel, MetricTenantSLOErrorBudget, Range{0.65, 1.0}, t.state.seed^2, now)
+	base := tenantSLOAttrs(t)
+	o.ObserveFloat64(ins.tenantSLOBurn, burn, metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.tenantSLOCompliance, clamp(comp, 0, 1), metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.tenantSLOErrorBudget, clamp(budget, 0, 1), metric.WithAttributes(base...))
+}
+
+func observeProbe(o metric.Observer, ins *instruments, t *Tenant, sc *Scenario, now time.Time) {
+	sel := selectorTenant(t.TenantID)
+	succ := sc.RampedValue(sel, MetricAirtelProbeSuccessRate, Range{0.999, 1.0}, t.state.seed^7, now)
+	lat := sc.RampedValue(sel, MetricAirtelProbeLatencyMs, Range{20, 80}, t.state.seed^8, now)
+	attrs := append(tenantAttrs(t),
+		attribute.String("probe_name", "postgres_tcp_connect_and_simple_query"),
+		attribute.String("target_service", "postgres"),
+	)
+	o.ObserveFloat64(ins.probeSuccessRate, clamp(succ, 0, 1), metric.WithAttributes(attrs...))
+	o.ObserveFloat64(ins.probeLatencyMs, lat, metric.WithAttributes(attrs...))
+}
+
+func observePG(o metric.Observer, ins *instruments, pg *PGInstance, sc *Scenario, now time.Time) {
+	pg.state.mu.Lock()
+	defer pg.state.mu.Unlock()
+	dt := dtAdvance(&pg.state.lastTick, now)
+	sel := selectorPG(pg.Name)
+	base := pgAttrs(pg)
+
+	o.ObserveFloat64(ins.pgUp, 1, metric.WithAttributes(base...))
+
+	numBackends := sc.RampedValue(sel, MetricPGNumBackends, Range{30, 180}, pg.state.seed^1, now)
+	o.ObserveFloat64(ins.pgNumBackends, numBackends, metric.WithAttributes(base...))
+
+	// Transaction counters
+	commitRate := 800.0 // mid baseline (300–1500 range)
+	if active := sc.IsActiveOn(sel, MetricPGQueryLatencyP95Ms, now); active {
+		commitRate = 200 // flat / reduced under incident
+	}
+	pg.state.cumXactCommit += commitRate * dt
+	rollbackRate := sc.RampedValue(sel, MetricPGXactRollbackTotal, Range{1, 10}, pg.state.seed^2, now)
+	pg.state.cumXactRollback += rollbackRate * dt
+	o.ObserveFloat64(ins.pgXactCommit, pg.state.cumXactCommit, metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.pgXactRollback, pg.state.cumXactRollback, metric.WithAttributes(base...))
+
+	tupRate := 18000.0
+	if sc.IsActiveOn(sel, MetricPGQueryLatencyP95Ms, now) {
+		tupRate = 6000
+	}
+	pg.state.cumTupFetched += tupRate * dt
+	o.ObserveFloat64(ins.pgTupFetched, pg.state.cumTupFetched, metric.WithAttributes(base...))
+
+	blksReadRate := 1500.0
+	blksHitRate := 48000.0
+	if sc.IsActiveOn(sel, MetricPGCacheHitRatio, now) {
+		blksReadRate = 8000
+		blksHitRate = 32000
+	}
+	pg.state.cumBlksRead += blksReadRate * dt
+	pg.state.cumBlksHit += blksHitRate * dt
+	o.ObserveFloat64(ins.pgBlksRead, pg.state.cumBlksRead, metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.pgBlksHit, pg.state.cumBlksHit, metric.WithAttributes(base...))
+
+	cacheHit := sc.RampedValue(sel, MetricPGCacheHitRatio, Range{0.96, 0.995}, pg.state.seed^3, now)
+	o.ObserveFloat64(ins.pgCacheHitRatio, clamp(cacheHit, 0, 1), metric.WithAttributes(base...))
+
+	// p95 latency gauge + histogram (per query_class)
+	for _, qc := range pgQueryClasses {
+		p95Ms := sc.RampedValue(sel, MetricPGQueryLatencyP95Ms, Range{35, 90}, pg.state.seed^uint64(len(qc)), now)
+		// SELECT-ish (oltp_read) is the lowest baseline; ddl-ish (reporting/background) is higher.
+		switch qc {
+		case "oltp_write":
+			p95Ms *= 1.4
+		case "reporting":
+			p95Ms *= 2.0
+		case "background":
+			p95Ms *= 1.8
+		}
+		attrs := append(base, attribute.String("query_class", qc))
+		o.ObserveFloat64(ins.pgLatencyP95, p95Ms, metric.WithAttributes(attrs...))
+
+		if emitPGHistogram() {
+			emitPGLatencyHistogram(o, ins, pg, qc, p95Ms/1000.0, base, dt)
+		}
+	}
+
+	// pg_locks_count per mode
+	lockTotal := sc.RampedValue(sel, MetricPGLocksCount, Range{20, 500}, pg.state.seed^4, now)
+	for i, mode := range pgLockModes {
+		share := []float64{0.6, 0.25, 0.10, 0.05}[i]
+		o.ObserveFloat64(ins.pgLocksCount, lockTotal*share,
+			metric.WithAttributes(append(base, attribute.String("mode", mode))...))
+	}
+
+	// pg_stat_activity_count: emit a curated set of (state, wait_event_type, wait_event) tuples
+	emitPGActivity(o, ins, pg, sc, sel, base, now)
+
+	// Checkpoint rates as counters
+	cpWriteRate := sc.RampedValue(sel, MetricPGCheckpointWriteRate, Range{0.1, 1.0}, pg.state.seed^5, now)
+	cpSyncRate := sc.RampedValue(sel, MetricPGCheckpointSyncRate, Range{0.01, 0.2}, pg.state.seed^6, now)
+	pg.state.cumCheckpointWrite += cpWriteRate * dt
+	pg.state.cumCheckpointSync += cpSyncRate * dt
+	o.ObserveFloat64(ins.pgCheckpointWrite, pg.state.cumCheckpointWrite, metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.pgCheckpointSync, pg.state.cumCheckpointSync, metric.WithAttributes(base...))
+
+	walRate := 8.0 * 1024 * 1024 // 8 MB/s baseline
+	pg.state.cumWalBytes += walRate * dt
+	o.ObserveFloat64(ins.pgWalBytes, pg.state.cumWalBytes, metric.WithAttributes(base...))
+
+	repLag := sc.RampedValue(sel, MetricPGReplicationLag, Range{0, 2}, pg.state.seed^7, now)
+	o.ObserveFloat64(ins.pgReplicationLag, repLag,
+		metric.WithAttributes(append(base, attribute.String("replica_name", "replica-01"))...))
+}
+
+func emitPGLatencyHistogram(o metric.Observer, ins *instruments, pg *PGInstance, qc string, p95Sec float64, base []attribute.KeyValue, dt float64) {
+	// Approximate the query rate per query_class as 50 q/s baseline; spec
+	// permits a single nominal value here since the histogram is only for
+	// shape demos.
+	qps := 50.0
+	deltaCount := qps * dt
+	if _, ok := pg.state.cumLatencyBuckets[qc]; !ok {
+		pg.state.cumLatencyBuckets[qc] = map[string]float64{}
+	}
+	p50 := p95Sec / 3
+	p99 := p95Sec * 2
+	for _, le := range pgLatencyBuckets {
+		frac := cumulativeLatencyFraction(le, p50, p95Sec, p99)
+		key := strconv.FormatFloat(le, 'f', -1, 64)
+		pg.state.cumLatencyBuckets[qc][key] += deltaCount * frac
+		attrs := append(base,
+			attribute.String("query_class", qc),
+			attribute.String("le", key),
+		)
+		o.ObserveFloat64(ins.pgLatencyBucket, pg.state.cumLatencyBuckets[qc][key], metric.WithAttributes(attrs...))
+	}
+	// +Inf bucket
+	pg.state.cumLatencyBuckets[qc]["+Inf"] = pg.state.cumLatencyCount[qc] + deltaCount
+	attrs := append(base,
+		attribute.String("query_class", qc),
+		attribute.String("le", "+Inf"),
+	)
+	o.ObserveFloat64(ins.pgLatencyBucket, pg.state.cumLatencyBuckets[qc]["+Inf"], metric.WithAttributes(attrs...))
+
+	pg.state.cumLatencyCount[qc] += deltaCount
+	pg.state.cumLatencySum[qc] += deltaCount * p50
+	o.ObserveFloat64(ins.pgLatencyCount, pg.state.cumLatencyCount[qc],
+		metric.WithAttributes(append(base, attribute.String("query_class", qc))...))
+	o.ObserveFloat64(ins.pgLatencySum, pg.state.cumLatencySum[qc],
+		metric.WithAttributes(append(base, attribute.String("query_class", qc))...))
+}
+
+// cumulativeLatencyFraction returns the share of queries with latency ≤ le
+// given a piecewise-linear CDF defined by p50/p95/p99.
+func cumulativeLatencyFraction(le, p50, p95, p99 float64) float64 {
+	switch {
+	case le <= 0:
+		return 0
+	case le < p50:
+		return 0.5 * (le / p50)
+	case le < p95:
+		return 0.5 + 0.45*(le-p50)/(p95-p50)
+	case le < p99:
+		return 0.95 + 0.04*(le-p95)/(p99-p95)
+	default:
+		return 0.99
+	}
+}
+
+func emitPGActivity(o metric.Observer, ins *instruments, pg *PGInstance, sc *Scenario, sel string, base []attribute.KeyValue, now time.Time) {
+	type act struct {
+		state, weType, wEvent string
+		baseRange             Range
+	}
+	acts := []act{
+		{"active", "", "", Range{20, 60}},
+		{"idle", "Client", "ClientRead", Range{30, 90}},
+		{"idle in transaction", "Client", "ClientRead", Range{0, 10}},
+		{"active", "IO", "DataFileRead", Range{0, 8}},
+		{"active", "IO", "DataFileWrite", Range{0, 8}},
+		{"active", "Lock", "tuple", Range{0, 4}},
+	}
+	ioWaitActive := sc.IsActiveOn(sel, MetricPGQueryLatencyP95Ms, now) ||
+		sc.IsActiveOn(sel, MetricPGCacheHitRatio, now)
+	for i, a := range acts {
+		rng := a.baseRange
+		if ioWaitActive && a.weType == "IO" {
+			rng = Range{30, 90}
+		}
+		val := rng.Sample(pg.state.seed^uint64(i+10), now)
+		attrs := append(base,
+			attribute.String("state", a.state),
+		)
+		if a.weType != "" {
+			attrs = append(attrs,
+				attribute.String("wait_event_type", a.weType),
+				attribute.String("wait_event", a.wEvent),
+			)
+		}
+		o.ObserveFloat64(ins.pgActivityCount, val, metric.WithAttributes(attrs...))
+	}
+}
+
+func observeLinuxVM(o metric.Observer, ins *instruments, vm *VM, sc *Scenario, now time.Time) {
+	vm.state.mu.Lock()
+	defer vm.state.mu.Unlock()
+	dt := dtAdvance(&vm.state.lastTick, now)
+	sel := selectorVM(vm.Name)
+	base := vmAttrs(vm)
+	instAttr := attribute.String("instance", vm.Name+":9100")
+	dev := attribute.String("device", "sda")
+
+	// CPU mode counters — emit user/system/idle/iowait/steal cumulative seconds.
+	cpuModes := []struct {
+		mode    string
+		baseRPS float64
+	}{
+		{"user", 0.6},
+		{"system", 0.2},
+		{"idle", 0.18},
+		{"iowait", 0.02},
+		{"steal", 0.005},
+		{"irq", 0.001},
+		{"softirq", 0.001},
+	}
+	for _, m := range cpuModes {
+		rate := m.baseRPS
+		if m.mode == "iowait" {
+			rate = sc.RampedValue(sel, MetricNodeIOWaitPct, Range{0.5, 5.0}, vm.state.seed^uint64(m.mode[0]), now) / 100.0
+		}
+		if m.mode == "steal" {
+			rate = sc.RampedValue(sel, MetricNodeCPUStealPct, Range{0.0, 2.0}, vm.state.seed^uint64(m.mode[0]), now) / 100.0
+		}
+		vm.state.cumCPUSeconds[m.mode] += rate * dt
+		attrs := append(base, instAttr,
+			attribute.String("cpu", "0"),
+			attribute.String("mode", m.mode),
+		)
+		o.ObserveFloat64(ins.nodeCPUSeconds, vm.state.cumCPUSeconds[m.mode], metric.WithAttributes(attrs...))
+	}
+
+	o.ObserveFloat64(ins.nodeIOWaitPct,
+		sc.RampedValue(sel, MetricNodeIOWaitPct, Range{0.5, 5.0}, vm.state.seed^1, now),
+		metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.nodeCPUStealPct,
+		sc.RampedValue(sel, MetricNodeCPUStealPct, Range{0.0, 2.0}, vm.state.seed^2, now),
+		metric.WithAttributes(base...))
+
+	// Memory available — baseline ~30% of total. RampedValue gives a fraction
+	// for the memory-pressure profile; multiply by total to get bytes.
+	memTotal := float64(vm.MemoryGiB) * 1024 * 1024 * 1024
+	memFrac := sc.RampedValue(sel, MetricNodeMemAvailable, Range{0.20, 0.45}, vm.state.seed^3, now)
+	o.ObserveFloat64(ins.nodeMemAvailable, memFrac*memTotal,
+		metric.WithAttributes(append(base, instAttr)...))
+
+	diskReadRate := sc.RampedValue(sel, MetricNodeDiskReadTime, Range{0.01, 0.5}, vm.state.seed^4, now)
+	diskWriteRate := sc.RampedValue(sel, MetricNodeDiskWriteTime, Range{0.02, 0.8}, vm.state.seed^5, now)
+	vm.state.cumDiskRead += diskReadRate * dt
+	vm.state.cumDiskWrite += diskWriteRate * dt
+	vm.state.cumDiskIO += (diskReadRate + diskWriteRate) * dt
+	attrsDisk := append(base, instAttr, dev)
+	o.ObserveFloat64(ins.nodeDiskReadTime, vm.state.cumDiskRead, metric.WithAttributes(attrsDisk...))
+	o.ObserveFloat64(ins.nodeDiskWriteTime, vm.state.cumDiskWrite, metric.WithAttributes(attrsDisk...))
+	o.ObserveFloat64(ins.nodeDiskIOTime, vm.state.cumDiskIO, metric.WithAttributes(attrsDisk...))
+
+	o.ObserveFloat64(ins.nodeDiskIONow,
+		sc.RampedValue(sel, MetricNodeDiskIONow, Range{0, 4}, vm.state.seed^6, now),
+		metric.WithAttributes(attrsDisk...))
+
+	o.ObserveFloat64(ins.nodeFsAvail, 0.6*memTotal, // hand-wave: a few hundred GiB free
+		metric.WithAttributes(append(base, instAttr, dev,
+			attribute.String("mountpoint", "/"),
+			attribute.String("fstype", "ext4"))...))
+
+	vm.state.cumNetRxDrop += 0.5 * dt
+	vm.state.cumNetTxDrop += 0.4 * dt
+	o.ObserveFloat64(ins.nodeNetRxDrop, vm.state.cumNetRxDrop,
+		metric.WithAttributes(append(base, instAttr, attribute.String("device", "eth0"))...))
+	o.ObserveFloat64(ins.nodeNetTxDrop, vm.state.cumNetTxDrop,
+		metric.WithAttributes(append(base, instAttr, attribute.String("device", "eth0"))...))
+
+	o.ObserveFloat64(ins.nodeLoad1,
+		sc.RampedValue(sel, MetricNodeLoad1, Range{1.0, 4.0}, vm.state.seed^7, now),
+		metric.WithAttributes(append(base, instAttr)...))
+
+	ctxRate := sc.RampedValue(sel, MetricNodeContextSwitches, Range{1000, 6000}, vm.state.seed^8, now)
+	vm.state.cumContextSwitches += ctxRate * dt
+	o.ObserveFloat64(ins.nodeContextSwitches, vm.state.cumContextSwitches,
+		metric.WithAttributes(append(base, instAttr)...))
+
+	pswpInRate := sc.RampedValue(sel, MetricNodePSwapInRate, Range{0, 1}, vm.state.seed^9, now)
+	pswpOutRate := sc.RampedValue(sel, MetricNodePSwapOutRate, Range{0, 1}, vm.state.seed^10, now)
+	vm.state.cumPSwapIn += pswpInRate * dt
+	vm.state.cumPSwapOut += pswpOutRate * dt
+	o.ObserveFloat64(ins.nodePSwapIn, vm.state.cumPSwapIn, metric.WithAttributes(append(base, instAttr)...))
+	o.ObserveFloat64(ins.nodePSwapOut, vm.state.cumPSwapOut, metric.WithAttributes(append(base, instAttr)...))
+
+	memPressureRate := sc.RampedValue(sel, MetricNodeMemPressureRate, Range{0, 0.02}, vm.state.seed^11, now)
+	vm.state.cumMemPressure += memPressureRate * dt
+	o.ObserveFloat64(ins.nodeMemPressure, vm.state.cumMemPressure,
+		metric.WithAttributes(append(base, instAttr)...))
+}
+
+func observeVMwareVM(o metric.Observer, ins *instruments, vm *VM, sc *Scenario, now time.Time) {
+	sel := selectorVM(vm.Name)
+	base := vmAttrs(vm)
+	o.ObserveFloat64(ins.vmwareVMPowerState, 1, metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.vmwareVMCPUUsagePct,
+		clamp(sc.RampedValue(sel, MetricVMwareVMCPUUsagePct, Range{20, 65}, vm.state.seed^20, now), 0, 100),
+		metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.vmwareVMCPUReadyMs,
+		sc.RampedValue(sel, MetricVMwareVMCPUReadyMs, Range{50, 800}, vm.state.seed^21, now),
+		metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.vmwareVMMemUsagePct,
+		clamp(sc.RampedValue(sel, MetricVMwareVMMemUsagePct, Range{45, 80}, vm.state.seed^22, now), 0, 100),
+		metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.vmwareVMMemBallooned,
+		sc.RampedValue(sel, MetricVMwareVMMemBallooned, Range{0, 104857600}, vm.state.seed^23, now),
+		metric.WithAttributes(base...))
+
+	diskAttrs := append(base, attribute.String("virtual_disk", "Hard disk 1"))
+	o.ObserveFloat64(ins.vmwareVMDiskReadLat,
+		sc.RampedValue(sel, MetricVMwareVMDiskReadLat, Range{1, 12}, vm.state.seed^24, now),
+		metric.WithAttributes(diskAttrs...))
+	o.ObserveFloat64(ins.vmwareVMDiskWriteLat,
+		sc.RampedValue(sel, MetricVMwareVMDiskWriteLat, Range{2, 15}, vm.state.seed^25, now),
+		metric.WithAttributes(diskAttrs...))
+	o.ObserveFloat64(ins.vmwareVMDiskUsage, float64(vm.MemoryGiB)*1024*1024*1024*4, // ~4× memory hand-wave
+		metric.WithAttributes(base...))
+
+	vm.state.cumVMwareNetRx += 200000 * 15 // ~200 KB/s baseline × 15s scrape
+	vm.state.cumVMwareNetTx += 180000 * 15
+	nicAttrs := append(base, attribute.String("nic", "vmnic0"))
+	o.ObserveFloat64(ins.vmwareVMNetRx, vm.state.cumVMwareNetRx, metric.WithAttributes(nicAttrs...))
+	o.ObserveFloat64(ins.vmwareVMNetTx, vm.state.cumVMwareNetTx, metric.WithAttributes(nicAttrs...))
+}
+
+func observeHost(o metric.Observer, ins *instruments, h *Host, sc *Scenario, c *Catalog, now time.Time) {
+	h.state.mu.Lock()
+	defer h.state.mu.Unlock()
+	dt := dtAdvance(&h.state.lastTick, now)
+	sel := selectorHost(h.ID)
+	base := hostAttrs(h)
+	o.ObserveFloat64(ins.vmwareHostCPUUsagePct,
+		clamp(sc.RampedValue(sel, MetricVMwareHostCPUUsagePct, Range{35, 70}, h.state.seed^1, now), 0, 100),
+		metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.vmwareHostMemUsagePct,
+		clamp(sc.RampedValue(sel, MetricVMwareHostMemUsagePct, Range{45, 80}, h.state.seed^2, now), 0, 100),
+		metric.WithAttributes(base...))
+	// host disk latency is reported per datastore the host writes to. For the
+	// degraded host we link the latency to datastore-202.
+	dsAttr := attribute.String("datastore_id", "datastore-202")
+	dsNameAttr := attribute.String("datastore_name", "ds-gold-delhi-02")
+	o.ObserveFloat64(ins.vmwareHostDiskReadLat,
+		sc.RampedValue(sel, MetricVMwareHostDiskReadLat, Range{1, 10}, h.state.seed^3, now),
+		metric.WithAttributes(append(base, dsAttr, dsNameAttr)...))
+	o.ObserveFloat64(ins.vmwareHostDiskWriteLat,
+		sc.RampedValue(sel, MetricVMwareHostDiskWriteLat, Range{2, 15}, h.state.seed^4, now),
+		metric.WithAttributes(append(base, dsAttr, dsNameAttr)...))
+	for _, vmnic := range []string{"vmnic0", "vmnic1"} {
+		h.state.cumNetDroppedRx += 0.2 * dt
+		h.state.cumNetDroppedTx += 0.2 * dt
+		nicAttrs := append(base, attribute.String("vmnic", vmnic))
+		o.ObserveFloat64(ins.vmwareHostNetRxDropped, h.state.cumNetDroppedRx, metric.WithAttributes(nicAttrs...))
+		o.ObserveFloat64(ins.vmwareHostNetTxDropped, h.state.cumNetDroppedTx, metric.WithAttributes(nicAttrs...))
+	}
+	o.ObserveFloat64(ins.vmwareHostVMCount, float64(len(c.VMsOnHost(h.ID))), metric.WithAttributes(base...))
+}
+
+func observeDatastore(o metric.Observer, ins *instruments, d *Datastore, sc *Scenario, now time.Time) {
+	d.state.mu.Lock()
+	defer d.state.mu.Unlock()
+	_ = dtAdvance(&d.state.lastTick, now)
+	sel := selectorDatastore(d.ID)
+	base := dsAttrs(d)
+	capacity := float64(d.CapacityGiB) * 1024 * 1024 * 1024
+	o.ObserveFloat64(ins.dsCapacity, capacity, metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.dsFreeBytes, capacity*0.55, metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.dsReadLat,
+		sc.RampedValue(sel, MetricDSReadLat, Range{1, 8}, d.state.seed^1, now),
+		metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.dsWriteLat,
+		sc.RampedValue(sel, MetricDSWriteLat, Range{2, 12}, d.state.seed^2, now),
+		metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.dsIOPSRead,
+		sc.RampedValue(sel, MetricDSIOPSRead, Range{500, 5000}, d.state.seed^3, now),
+		metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.dsIOPSWrite,
+		sc.RampedValue(sel, MetricDSIOPSWrite, Range{500, 7000}, d.state.seed^4, now),
+		metric.WithAttributes(base...))
+	o.ObserveFloat64(ins.dsQueueDepth,
+		sc.RampedValue(sel, MetricDSQueueDepth, Range{0, 20}, d.state.seed^5, now),
+		metric.WithAttributes(base...))
+}
+
+// observeAlerts emits cardinal_alert_active gauges for synthetic alerts that
+// fire during a profile. Without a profile this emits nothing.
+func observeAlerts(o metric.Observer, ins *instruments, sc *Scenario, _ *Catalog, _ time.Time) {
+	id := sc.ActiveProfileID()
+	if id == "" {
+		return
+	}
+	switch id {
+	case ProfileDatastoreInfra:
+		o.ObserveFloat64(ins.alertActive, 1,
+			metric.WithAttributes(
+				attribute.String("alert_name", "VMware datastore write latency high"),
+				attribute.String("alert_severity", "high"),
+				attribute.String("affected_entity_type", "datastore"),
+				attribute.String("affected_entity_id", "datastore-202"),
+				attribute.String("suspected_layer", "vmware_datastore"),
+			))
+		o.ObserveFloat64(ins.alertActive, 1,
+			metric.WithAttributes(
+				attribute.String("alert_name", "Tenant PostgreSQL latency SLO burn"),
+				attribute.String("alert_severity", "critical"),
+				attribute.String("tenant_id", "tenant_bajaj_finance"),
+				attribute.String("customer_id", "bajaj_finance"),
+				attribute.String("affected_entity_type", "pg_instance"),
+				attribute.String("affected_entity_id", "pg-bajaj-01"),
+				attribute.String("suspected_layer", "vmware_datastore"),
+			))
+	default:
+		o.ObserveFloat64(ins.alertActive, 1,
+			metric.WithAttributes(
+				attribute.String("alert_name", "Tenant PostgreSQL latency SLO burn"),
+				attribute.String("alert_severity", "critical"),
+				attribute.String("tenant_id", "tenant_bajaj_finance"),
+				attribute.String("customer_id", "bajaj_finance"),
+				attribute.String("affected_entity_type", "pg_instance"),
+				attribute.String("affected_entity_id", "pg-bajaj-01"),
+				attribute.String("suspected_layer", "linux_vm"),
+			))
+	}
+}
+
+func clamp(v, lo, hi float64) float64 {
+	if math.IsNaN(v) {
+		return lo
+	}
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+// registerAll creates every async instrument. Returned errors are wrapped so
+// the caller knows which metric failed to register.
+func registerAll(m metric.Meter, ins *instruments) error {
 	var err error
 	g := func(name, desc string) metric.Float64ObservableGauge {
 		if err != nil {
 			return nil
 		}
-		var gg metric.Float64ObservableGauge
-		gg, err = meter.Float64ObservableGauge(name, metric.WithDescription(desc))
-		return gg
+		var x metric.Float64ObservableGauge
+		x, err = m.Float64ObservableGauge(name, metric.WithDescription(desc))
+		return x
 	}
 	c := func(name, desc string) metric.Float64ObservableCounter {
 		if err != nil {
 			return nil
 		}
-		var cc metric.Float64ObservableCounter
-		cc, err = meter.Float64ObservableCounter(name, metric.WithDescription(desc))
-		return cc
+		var x metric.Float64ObservableCounter
+		x, err = m.Float64ObservableCounter(name, metric.WithDescription(desc))
+		return x
 	}
 
-	ins.dbUp = g("db.up", "1 when the DB instance is up and accepting connections")
-	ins.connectionsActive = g("db.connections.active", "Active client connections")
-	ins.connectionsIdle = g("db.connections.idle", "Idle client connections")
-	ins.connectionsMax = g("db.connections.max", "Max client connections (parameter-group setting)")
-	ins.connectionsRejected = c("db.connections.rejected_total", "Connections rejected, partitioned by reason")
-	ins.connectionsWaiting = g("db.connections.waiting", "Clients queued at the pooler")
+	ins.tenantSLOBurn = g(MetricTenantSLOBurnRate, "Tenant SLO error budget burn rate")
+	ins.tenantSLOCompliance = g(MetricTenantSLOCompliance, "Tenant SLO compliance ratio")
+	ins.tenantSLOErrorBudget = g(MetricTenantSLOErrorBudget, "Tenant SLO error budget remaining ratio")
 
-	ins.poolerClientActive = g("db.pooler.client_conn_active", "Pooler client connections active")
-	ins.poolerClientWaiting = g("db.pooler.client_conn_waiting", "Pooler client connections waiting")
-	ins.poolerServerActive = g("db.pooler.server_conn_active", "Pooler server-side connections active")
-	ins.poolerExhausted = c("db.pooler.pool_exhausted_total", "Pooler pool exhaustion events")
+	ins.pgUp = g(MetricPGUp, "1 when the PostgreSQL instance is accepting connections")
+	ins.pgNumBackends = g(MetricPGNumBackends, "Active backend connections per database")
+	ins.pgXactCommit = c(MetricPGXactCommitTotal, "Transactions committed")
+	ins.pgXactRollback = c(MetricPGXactRollbackTotal, "Transactions rolled back")
+	ins.pgTupFetched = c(MetricPGTupFetchedTotal, "Tuples fetched")
+	ins.pgBlksRead = c(MetricPGBlksReadTotal, "Disk blocks read")
+	ins.pgBlksHit = c(MetricPGBlksHitTotal, "Disk blocks served from cache")
+	ins.pgCacheHitRatio = g(MetricPGCacheHitRatio, "Buffer cache hit ratio")
+	ins.pgLatencyBucket = c(MetricPGQueryLatencyBucket, "Query latency histogram (cumulative)")
+	ins.pgLatencyCount = c(MetricPGQueryLatencyCount, "Query latency histogram count")
+	ins.pgLatencySum = c(MetricPGQueryLatencySum, "Query latency histogram sum")
+	ins.pgLatencyP95 = g(MetricPGQueryLatencyP95Ms, "Query latency p95 in milliseconds")
+	ins.pgLocksCount = g(MetricPGLocksCount, "Open locks per mode")
+	ins.pgActivityCount = g(MetricPGActivityCount, "Session count by state and wait_event")
+	ins.pgCheckpointWrite = c(MetricPGCheckpointWriteRate, "Cumulative checkpoint write time")
+	ins.pgCheckpointSync = c(MetricPGCheckpointSyncRate, "Cumulative checkpoint sync time")
+	ins.pgWalBytes = c(MetricPGWalBytesTotal, "WAL bytes generated")
+	ins.pgReplicationLag = g(MetricPGReplicationLag, "Replication lag in seconds")
 
-	ins.txCommitted = c("db.tx.committed_total", "Transactions committed")
-	ins.txRolledBack = c("db.tx.rolled_back_total", "Transactions rolled back")
-	ins.queriesTotal = c("db.queries_total", "Queries by op")
-	ins.queryErrors = c("db.queries.errors_total", "Query errors by SQLSTATE")
-	ins.queryDuration = g("db.query.duration_seconds", "Query duration by op (quantile gauge)")
-	ins.queryDurationCount = c("db.query.duration_seconds.count", "Query duration observation count")
-	ins.queryDurationSum = c("db.query.duration_seconds.sum", "Query duration observation sum")
-	ins.queriesSlow = c("db.queries.slow_total", "Queries exceeding 1s threshold")
-	ins.queriesLongRunning = g("db.queries.long_running", "Currently active queries > 60s")
+	ins.nodeCPUSeconds = c(MetricNodeCPUSecondsTotal, "node_exporter CPU seconds counter by mode")
+	ins.nodeIOWaitPct = g(MetricNodeIOWaitPct, "CPU iowait percent")
+	ins.nodeCPUStealPct = g(MetricNodeCPUStealPct, "CPU steal percent")
+	ins.nodeMemAvailable = g(MetricNodeMemAvailable, "node_exporter MemAvailable bytes")
+	ins.nodeDiskReadTime = c(MetricNodeDiskReadTime, "Cumulative disk read time")
+	ins.nodeDiskWriteTime = c(MetricNodeDiskWriteTime, "Cumulative disk write time")
+	ins.nodeDiskIOTime = c(MetricNodeDiskIOTime, "Cumulative disk IO time")
+	ins.nodeDiskIONow = g(MetricNodeDiskIONow, "Outstanding IO operations")
+	ins.nodeFsAvail = g(MetricNodeFilesystemAvail, "Filesystem available bytes")
+	ins.nodeNetRxDrop = c(MetricNodeNetRxDrop, "Receive drops")
+	ins.nodeNetTxDrop = c(MetricNodeNetTxDrop, "Transmit drops")
+	ins.nodeLoad1 = g(MetricNodeLoad1, "1-minute load average")
+	ins.nodeContextSwitches = c(MetricNodeContextSwitches, "Cumulative context switches")
+	ins.nodePSwapIn = c(MetricNodePSwapInRate, "Cumulative pages swapped in")
+	ins.nodePSwapOut = c(MetricNodePSwapOutRate, "Cumulative pages swapped out")
+	ins.nodeMemPressure = c(MetricNodeMemPressureRate, "Memory pressure waiting seconds")
 
-	ins.deadlocks = c("db.deadlocks_total", "Deadlocks detected")
-	ins.lockWaitSec = c("db.lock.wait_seconds_total", "Total seconds spent waiting on locks, by lock_type")
-	ins.lockWaiters = g("db.lock.waiters", "Sessions currently waiting on a lock")
+	ins.vmwareVMPowerState = g(MetricVMwareVMPowerState, "VM power state (0/1/2)")
+	ins.vmwareVMCPUUsagePct = g(MetricVMwareVMCPUUsagePct, "VM CPU usage percent")
+	ins.vmwareVMCPUReadyMs = g(MetricVMwareVMCPUReadyMs, "VM CPU ready summation milliseconds")
+	ins.vmwareVMMemUsagePct = g(MetricVMwareVMMemUsagePct, "VM memory usage percent")
+	ins.vmwareVMMemBallooned = g(MetricVMwareVMMemBallooned, "VM memory ballooned bytes")
+	ins.vmwareVMDiskReadLat = g(MetricVMwareVMDiskReadLat, "VM virtual disk read latency ms")
+	ins.vmwareVMDiskWriteLat = g(MetricVMwareVMDiskWriteLat, "VM virtual disk write latency ms")
+	ins.vmwareVMDiskUsage = g(MetricVMwareVMDiskUsage, "VM disk usage bytes")
+	ins.vmwareVMNetRx = c(MetricVMwareVMNetRxBytes, "VM NIC received bytes")
+	ins.vmwareVMNetTx = c(MetricVMwareVMNetTxBytes, "VM NIC transmitted bytes")
 
-	ins.bufferHitRatio = g("db.cache.buffer_hit_ratio", "Buffer cache hit ratio")
-	ins.indexHitRatio = g("db.cache.index_hit_ratio", "Index cache hit ratio")
-	ins.tempBytes = c("db.temp.bytes_total", "Temp file bytes written (aggregate)")
+	ins.vmwareHostCPUUsagePct = g(MetricVMwareHostCPUUsagePct, "ESXi host CPU usage percent")
+	ins.vmwareHostMemUsagePct = g(MetricVMwareHostMemUsagePct, "ESXi host memory usage percent")
+	ins.vmwareHostDiskReadLat = g(MetricVMwareHostDiskReadLat, "ESXi host disk read latency ms")
+	ins.vmwareHostDiskWriteLat = g(MetricVMwareHostDiskWriteLat, "ESXi host disk write latency ms")
+	ins.vmwareHostNetRxDropped = c(MetricVMwareHostNetRxDropped, "ESXi host RX drops")
+	ins.vmwareHostNetTxDropped = c(MetricVMwareHostNetTxDropped, "ESXi host TX drops")
+	ins.vmwareHostVMCount = g(MetricVMwareHostVMCount, "ESXi host VM count")
 
-	ins.walBytes = c("db.wal.bytes_total", "WAL bytes generated")
-	ins.walLagBytes = g("db.wal.lag_bytes", "WAL lag in bytes, by replica_id")
-	ins.walLagSeconds = g("db.wal.lag_seconds", "WAL lag in seconds, by replica_id")
-	ins.replicationSlotLag = g("db.replication.slot_lag_bytes", "Replication slot lag in bytes")
+	ins.dsCapacity = g(MetricDSCapacity, "Datastore capacity bytes")
+	ins.dsFreeBytes = g(MetricDSFreeBytes, "Datastore free bytes")
+	ins.dsReadLat = g(MetricDSReadLat, "Datastore read latency ms")
+	ins.dsWriteLat = g(MetricDSWriteLat, "Datastore write latency ms")
+	ins.dsIOPSRead = g(MetricDSIOPSRead, "Datastore read IOPS")
+	ins.dsIOPSWrite = g(MetricDSIOPSWrite, "Datastore write IOPS")
+	ins.dsQueueDepth = g(MetricDSQueueDepth, "Datastore queue depth")
 
-	ins.checkpointTotal = c("db.checkpoint_total", "Checkpoint events by kind")
-	ins.checkpointDuration = g("db.checkpoint.duration_seconds", "Checkpoint duration (quantile gauge)")
-	ins.checkpointDurationCount = c("db.checkpoint.duration_seconds.count", "Checkpoint duration observation count")
-	ins.checkpointDurationSum = c("db.checkpoint.duration_seconds.sum", "Checkpoint duration observation sum")
-	ins.bgwriterBuffersWritten = c("db.bgwriter.buffers_written_total", "Background writer buffers written")
-	ins.autovacuumDuration = g("db.autovacuum.duration_seconds", "Autovacuum duration (quantile gauge)")
-	ins.autovacuumDurationCount = c("db.autovacuum.duration_seconds.count", "Autovacuum duration observation count")
-	ins.autovacuumDurationSum = c("db.autovacuum.duration_seconds.sum", "Autovacuum duration observation sum")
+	ins.probeSuccessRate = g(MetricAirtelProbeSuccessRate, "Airtel synthetic probe success ratio")
+	ins.probeLatencyMs = g(MetricAirtelProbeLatencyMs, "Airtel synthetic probe latency ms")
 
-	ins.storageUsed = g("db.storage.used_bytes", "Bytes used on the volume")
-	ins.storageCapacity = g("db.storage.capacity_bytes", "Volume's allocated capacity in bytes")
-	ins.storageIOPSRead = g("db.storage.iops_read", "Current read IOPS draw on the volume")
-	ins.storageIOPSWrite = g("db.storage.iops_write", "Current write IOPS draw on the volume")
-	ins.storageIOPSProvisioned = g("db.storage.iops_provisioned", "Volume's contracted IOPS ceiling")
-	ins.storageLatency = g("db.storage.latency_seconds", "Storage latency by op (quantile gauge)")
-	ins.storageLatencyCount = c("db.storage.latency_seconds.count", "Storage latency observation count")
-	ins.storageLatencySum = c("db.storage.latency_seconds.sum", "Storage latency observation sum")
-	ins.volumeHealth = g("db.storage.volume_health", "1 when volume hardware health is OK")
-
-	ins.hostCPU = g("db.host.cpu_usage_ratio", "Underlying host CPU usage ratio")
-	ins.hostMemory = g("db.host.memory_used_bytes", "Underlying host memory used bytes")
-
-	ins.failoverEvents = c("db.failover.events_total", "Failover events by result")
-	ins.backupLastSuccessAge = g("db.backup.last_success_age_seconds", "Age of the last successful backup in seconds")
+	ins.alertActive = g(MetricCardinalAlertActive, "Active synthetic alert state")
 
 	if err != nil {
 		return fmt.Errorf("create dbaas instruments: %w", err)
