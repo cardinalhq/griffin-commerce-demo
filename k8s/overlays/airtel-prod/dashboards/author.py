@@ -309,7 +309,7 @@ def dashboard_pg_detail():
     panels["pg_load1"]     = ts_panel("pg_load1", "Linux node_load1",
         'max(node_load1{vm_name="$vm_name"})')
     panels["pg_mem_avail"] = ts_panel("pg_mem_avail", "Linux MemAvailable (bytes)",
-        'min(node_memory_MemAvailable_bytes{vm_name="$vm_name"})')
+        'min(node_memory_memavailable_bytes{vm_name="$vm_name"})')
 
     sections = [
         {"title": "DB Posture", "cells": row_at(0,

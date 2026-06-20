@@ -51,7 +51,7 @@ const (
 	MetricNodeCPUSecondsTotal = "node_cpu_seconds_total"
 	MetricNodeIOWaitPct       = "node_cpu_iowait_percent"
 	MetricNodeCPUStealPct     = "node_cpu_steal_percent"
-	MetricNodeMemAvailable    = "node_memory_MemAvailable_bytes"
+	MetricNodeMemAvailable    = "node_memory_memavailable_bytes"
 	MetricNodeDiskReadTime    = "node_disk_read_time_seconds_total"
 	MetricNodeDiskWriteTime   = "node_disk_write_time_seconds_total"
 	MetricNodeDiskIOTime      = "node_disk_io_time_seconds_total"
