@@ -1,54 +1,37 @@
 # Airtel telemetry simulator — prod deploy
 
 This overlay deploys the Airtel telemetry simulator (`services/dbaas`) as
-a single pod in the `airtel-demo` namespace, sending OTLP metrics and logs
-to a Lakerunner ingest endpoint. The pod exposes a small HTTP API on
-port `9999` so the demo operator can flip failure profiles via
-`kubectl port-forward`.
+a single pod in the `airtel-demo` namespace of the lakerunner prod
+cluster (`aws-prod-us-east-2-global`). Telemetry flows via the node-local
+OTel collector DaemonSet (`collector/aws-prod-us-east-2-global-agent`)
+at `http://$(HOST_IP):4318` — same pattern the existing griffin-demo
+namespace uses. No Cardinal API key is provisioned at the pod; the
+collector handles upstream routing.
+
+The pod exposes an HTTP API on port `9999` so the demo operator can flip
+failure profiles via `kubectl port-forward`.
 
 ## Prerequisites
 
-1. A built image of `griffin-commerce-demo` containing the Airtel telemetry
-   simulator changes — tag it and update `kustomization.yaml` `newTag` if
-   you don't want `latest`.
-2. The Lakerunner prod OTLP endpoint URL (HTTPS).
-3. A Cardinal API key scoped to the demo org you want the synthetic
-   telemetry to land in.
+- A built image of `griffin-commerce-demo` containing the Airtel
+  telemetry simulator changes — pin its tag in `kustomization.yaml`
+  (`images.newTag`).
+- The node-local OTel collector DaemonSet
+  (`collector/aws-prod-us-east-2-global-agent`) already running, which it
+  is in `aws-prod-us-east-2-global`. Nothing to install here.
 
 ## Operator runbook
 
-1. Create the namespace (kustomize will also do this, but doing it first
-   lets you create the Secret before applying):
-
-   ```bash
-   kubectl create namespace airtel-demo
-   ```
-
-2. Create the Cardinal API key Secret:
-
-   ```bash
-   kubectl -n airtel-demo create secret generic cardinal-api-key \
-     --from-literal=CARDINAL_API_KEY=<YOUR_KEY_HERE>
-   ```
-
-3. Create the OTLP endpoint ConfigMap:
-
-   ```bash
-   kubectl -n airtel-demo create configmap dbaas-otlp-config \
-     --from-literal=OTEL_EXPORTER_OTLP_ENDPOINT=https://otelhttp.cardinalhq.io
-   ```
-
-   Replace the URL with whatever Lakerunner prod OTLP/HTTP endpoint your
-   demo org points at. The simulator will append `/v1/metrics` and
-   `/v1/logs` itself.
-
-4. Apply the overlay:
+1. Apply the overlay:
 
    ```bash
    kubectl apply -k k8s/overlays/airtel-prod
    ```
 
-5. Verify the pod is healthy:
+   This creates the `airtel-demo` namespace, the `dbaas` Deployment, and
+   the `dbaas-faults` Service (ClusterIP, port 9999).
+
+2. Verify the pod is healthy:
 
    ```bash
    kubectl -n airtel-demo get pods -l app=dbaas
@@ -58,10 +41,11 @@ port `9999` so the demo operator can flip failure profiles via
    You should see `Airtel telemetry simulator running. Waiting for shutdown
    signal.` once startup completes.
 
-6. At baseline you should immediately see metrics in Cardinal under the
-   demo org with `scenario_id=airtel_postgres_on_vmware_shared_vm_infra`:
+3. At baseline you should immediately see metrics with
+   `scenario_id=airtel_postgres_on_vmware_shared_vm_infra` in whichever
+   Cardinal org the node-local collector routes to:
 
-   - `tenant_slo_burn_rate` — 6 tenants, all values < 1
+   - `tenant_slo_burn_rate` — 6 tenants, values < 1
    - `pg_query_latency_p95_ms` — 4 PG instances at 35–90 ms
    - `vmware_datastore_write_latency_ms` — 3 datastores at 2–12 ms
 
@@ -111,15 +95,14 @@ spec §22.4.
 
 ```bash
 kubectl delete -k k8s/overlays/airtel-prod
-kubectl delete namespace airtel-demo
 ```
 
 ## Environment knobs
 
-| Env var                         | Default | Purpose                                               |
-| ------------------------------- | ------- | ----------------------------------------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`   | n/a     | Lakerunner OTLP/HTTP URL (from ConfigMap)             |
-| `CARDINAL_API_KEY`              | n/a     | Cardinal demo-org API key (from Secret)               |
-| `DBAAS_FAULT_PORT`              | 9999    | Port the local fault HTTP server binds                |
-| `DBAAS_LOG_INTERVAL_SEC`        | 5       | Seconds between log-emission ticks                    |
-| `DBAAS_EMIT_PG_HIST`            | true    | Set `false` to drop the 264-series PG latency buckets |
+| Env var                         | Default                  | Purpose                                               |
+| ------------------------------- | ------------------------ | ----------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`   | `http://$(HOST_IP):4318` | Node-local OTel collector (set automatically)         |
+| `OTEL_INSECURE`                 | `true`                   | Don't TLS-verify the loopback hop to the node agent   |
+| `DBAAS_FAULT_PORT`              | `9999`                   | Port the local fault HTTP server binds                |
+| `DBAAS_LOG_INTERVAL_SEC`        | `5`                      | Seconds between log-emission ticks                    |
+| `DBAAS_EMIT_PG_HIST`            | `true`                   | Set `false` to drop the 264-series PG latency buckets |

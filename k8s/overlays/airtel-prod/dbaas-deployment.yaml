@@ -43,21 +43,17 @@ spec:
               # scenario_id + scenario_version match the spec metadata so
               # demo dashboards can filter to this simulator's series.
               value: "scenario_id=airtel_postgres_on_vmware_shared_vm_infra,scenario_version=0.2,deployment.environment=airtel-demo"
-            # OTLP endpoint + auth header. Set OTEL_EXPORTER_OTLP_ENDPOINT
-            # via the operator-supplied ConfigMap and CARDINAL_API_KEY via
-            # the Secret. See README.md for the create-secret command.
+            # Send OTLP to the node-local collector DaemonSet (matches the
+            # pattern griffin-demo uses today). The collector handles upstream
+            # routing + auth, so the pod needs no Cardinal API key.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              valueFrom:
-                configMapKeyRef:
-                  name: dbaas-otlp-config
-                  key: OTEL_EXPORTER_OTLP_ENDPOINT
-            - name: CARDINAL_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: cardinal-api-key
-                  key: CARDINAL_API_KEY
-            - name: OTEL_EXPORTER_OTLP_HEADERS
-              value: "x-cardinalhq-api-key=$(CARDINAL_API_KEY)"
+              value: "http://$(HOST_IP):4318"
+            - name: OTEL_INSECURE
+              value: "true"
             # Cap log emission cadence to keep the demo log volume sensible.
             - name: DBAAS_LOG_INTERVAL_SEC
               value: "5"

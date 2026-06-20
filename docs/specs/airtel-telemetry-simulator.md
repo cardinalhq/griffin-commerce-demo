@@ -15,8 +15,10 @@ Cardinal through the tenant-SLO → application → infrastructure
 investigation flow.
 
 The simulator targets the lakerunner prod cluster
-(`aws-prod-us-east-2-global`) by default, sending OTLP to a Lakerunner
-ingest endpoint with a Cardinal API key supplied at deploy time.
+(`aws-prod-us-east-2-global`) by default, sending OTLP to the
+node-local OTel collector DaemonSet (`http://$(HOST_IP):4318`) — the
+same wiring the existing `griffin-demo` namespace uses. No Cardinal API
+key is provisioned at the pod; the collector handles upstream routing.
 
 ## Entity catalog (spec §4)
 
@@ -129,9 +131,6 @@ type ClusterIP); demo operators reach it via `kubectl port-forward`.
 See `k8s/overlays/airtel-prod/README.md` for the full runbook. In short:
 
 ```bash
-kubectl create namespace airtel-demo
-kubectl -n airtel-demo create secret generic cardinal-api-key --from-literal=CARDINAL_API_KEY=...
-kubectl -n airtel-demo create configmap dbaas-otlp-config --from-literal=OTEL_EXPORTER_OTLP_ENDPOINT=https://...
 kubectl apply -k k8s/overlays/airtel-prod
 kubectl -n airtel-demo port-forward svc/dbaas-faults 9999:9999
 curl -sX POST 'localhost:9999/faults/activate?profile=datastore_latency_shared_infra'
