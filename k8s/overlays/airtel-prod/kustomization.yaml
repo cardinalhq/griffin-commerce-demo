@@ -16,4 +16,4 @@ resources:
 
 images:
   - name: ghcr.io/cardinalhq/griffin-commerce-demo
-    newTag: latest
+    newTag: v0.4.9
