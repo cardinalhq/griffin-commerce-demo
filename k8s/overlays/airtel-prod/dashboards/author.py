@@ -212,11 +212,16 @@ def dashboard_pg_detail():
     panels["pg_cache_ts"]  = ts_panel("pg_cache_ts", "Cache Hit Ratio",
         'min(pg_database_cache_hit_ratio{pg_instance="$pg_instance"})')
 
-    # VM correlation row — the same VM the PG runs on
+    # VM correlation row — picked via the separate $vm_name dropdown so we
+    # avoid a group_left join (query engine doesn't support it).
     panels["pg_iowait"]    = ts_panel("pg_iowait", "VM Linux iowait (%)",
-        'max(node_cpu_iowait_percent * on(vm_name) group_left() (group by (vm_name)(pg_up{pg_instance="$pg_instance"}) > 0))')
+        'max(node_cpu_iowait_percent{vm_name="$vm_name"})')
     panels["pg_vmware_dw"] = ts_panel("pg_vmware_dw", "VMware VM Disk Write Latency (ms)",
-        'max(vmware_vm_disk_write_latency_ms * on(vm_name) group_left() (group by (vm_name)(pg_up{pg_instance="$pg_instance"}) > 0))')
+        'max(vmware_vm_disk_write_latency_ms{vm_name="$vm_name"})')
+    panels["pg_vm_ready"]  = ts_panel("pg_vm_ready", "VMware VM CPU Ready (ms / 20s)",
+        'max(vmware_vm_cpu_ready_summation_ms{vm_name="$vm_name"})')
+    panels["pg_node_disk"] = ts_panel("pg_node_disk", "Linux node_disk_io_now (outstanding ops)",
+        'max(node_disk_io_now{vm_name="$vm_name"})')
 
     sections = [
         {"title": "Tile Row", "cells": row_at(0,
@@ -227,14 +232,16 @@ def dashboard_pg_detail():
             ("pg_cp_write", 12, 6), ("pg_cp_sync", 12, 6))},
         {"title": "Locks & Cache", "cells": row_at(0,
             ("pg_locks", 12, 6), ("pg_cache_ts", 12, 6))},
-        {"title": "VM Correlation (same VM)", "cells": row_at(0,
+        {"title": "VM Correlation — pick the VM hosting the PG (vm-bajaj-pg-01 for pg-bajaj-01, etc.)", "cells": row_at(0,
             ("pg_iowait", 12, 7), ("pg_vmware_dw", 12, 7))},
+        {"title": "VM Correlation — more signals", "cells": row_at(0,
+            ("pg_vm_ready", 12, 6), ("pg_node_disk", 12, 6))},
     ]
     return {
         "name": "Airtel — Tenant PostgreSQL Detail",
         "spec": {
             "duration": "1h", "schemaVersion": 2,
-            "variables": [VAR_PG],
+            "variables": [VAR_PG, VAR_VM],
             "panels": panels,
             "sections": sections,
         },
