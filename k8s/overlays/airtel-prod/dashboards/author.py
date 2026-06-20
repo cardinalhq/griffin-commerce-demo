@@ -113,6 +113,20 @@ VAR_DATASTORE = {
     "defaultValue": ["datastore-202"],
 }
 
+VAR_HOST = {
+    "kind": "query", "name": "esxi_host_id", "label": "ESXi Host",
+    "sort": "alphabetical", "multi": False, "includeAll": False,
+    "source": {"label": "esxi_host_id", "metric": "vmware_host_cpu_usage_percent", "signal": "metrics"},
+    "defaultValue": ["host-1017"],
+}
+
+VAR_ARRAY = {
+    "kind": "query", "name": "storage_array", "label": "Storage Array",
+    "sort": "alphabetical", "multi": False, "includeAll": False,
+    "source": {"label": "storage_array", "metric": "vmware_datastore_write_latency_ms", "signal": "metrics"},
+    "defaultValue": ["san-delhi-gold-01"],
+}
+
 # ============================================================
 # 1. Tenant Health Overview — spec §24.1
 # ============================================================
@@ -475,120 +489,116 @@ def dashboard_vmware_infra():
 def dashboard_correlation():
     panels = {}
 
-    # KPI: the application-visible breach
-    panels["cor_burn"] = label_panel("cor_burn",
-        "Bajaj Burn Rate",
-        'max(tenant_slo_burn_rate{tenant_id="tenant_bajaj_finance"})',
-        color="#ef4444", unit="x")
-    panels["cor_p95"]  = label_panel("cor_p95",
-        "Bajaj PG p95 (ms)",
-        'max(pg_query_latency_p95_ms{pg_instance="pg-bajaj-01"})',
-        color="#ef4444", unit="ms")
-    panels["cor_ds"]   = label_panel("cor_ds",
-        "ds-gold-delhi-02 Write Latency (ms)",
-        'max(vmware_datastore_write_latency_ms{datastore_id="datastore-202"})',
-        color="#f59e0b", unit="ms")
-    panels["cor_at_risk"] = label_panel("cor_at_risk",
-        "IndiGo Burn (at risk)",
-        'max(tenant_slo_burn_rate{tenant_id="tenant_indigo_ops"})',
-        color="#f59e0b", unit="x")
+    # All panels are variable-driven so the dashboard reads as a generic
+    # correlation workbench — the operator picks a tenant / PG / VM /
+    # host / datastore and the page rebuilds. Nothing here hardcodes a
+    # specific incident.
 
-    # The chain: 4 series stacked together visually so the cause→symptom story is obvious
+    # Selected-entity KPI strip
+    panels["cor_burn"] = label_panel("cor_burn", "Tenant SLO Burn Rate",
+        'max(tenant_slo_burn_rate{tenant_id="$tenant_id"})', color="#ef4444", unit="x")
+    panels["cor_p95"]  = label_panel("cor_p95", "DB p95 Latency",
+        'max(pg_query_latency_p95_ms{pg_instance="$pg_instance"})', color="#ef4444", unit="ms")
+    panels["cor_ds"]   = label_panel("cor_ds", "Datastore Write Latency",
+        'max(vmware_datastore_write_latency_ms{datastore_id="$datastore_id"})',
+        color="#f59e0b", unit="ms")
+    panels["cor_vm_dw"] = label_panel("cor_vm_dw", "VM Disk Write Latency",
+        'max(vmware_vm_disk_write_latency_ms{vm_name="$vm_name"})',
+        color="#f59e0b", unit="ms")
+
+    # Latency chain: datastore → VM → PG, plotted together to expose the
+    # cause-to-symptom relationship across infrastructure layers.
     panels["cor_chain_lat"] = ts_panel("cor_chain_lat",
-        "Bajaj Latency Chain (ms) — datastore → VM → PG",
+        "Latency Chain (ms) — datastore → VM disk → DB p95",
         [
-            'max(vmware_datastore_write_latency_ms{datastore_id="datastore-202"})',
-            'max(vmware_vm_disk_write_latency_ms{vm_name="vm-bajaj-pg-01"})',
-            'max(pg_query_latency_p95_ms{pg_instance="pg-bajaj-01"})',
+            'max(vmware_datastore_write_latency_ms{datastore_id="$datastore_id"})',
+            'max(vmware_vm_disk_write_latency_ms{vm_name="$vm_name"})',
+            'max(pg_query_latency_p95_ms{pg_instance="$pg_instance"})',
         ])
 
     panels["cor_chain_host"] = ts_panel("cor_chain_host",
-        "Bajaj Host Contention — host_lat & vm_cpu_ready",
+        "Host Contention — host disk latency & VM CPU ready",
         [
-            'max(vmware_host_disk_write_latency_ms{esxi_host_id="host-1017"})',
-            'max(vmware_vm_cpu_ready_summation_ms{vm_name="vm-bajaj-pg-01"})',
+            'max(vmware_host_disk_write_latency_ms{esxi_host_id="$esxi_host_id"})',
+            'max(vmware_vm_cpu_ready_summation_ms{vm_name="$vm_name"})',
         ])
 
     panels["cor_chain_guest"] = ts_panel("cor_chain_guest",
-        "Bajaj Guest Pressure — iowait & disk_io_now",
+        "Linux Guest Pressure — iowait & disk_io_now",
         [
-            'max(node_cpu_iowait_percent{vm_name="vm-bajaj-pg-01"})',
-            'max(node_disk_io_now{vm_name="vm-bajaj-pg-01"})',
+            'max(node_cpu_iowait_percent{vm_name="$vm_name"})',
+            'max(node_disk_io_now{vm_name="$vm_name"})',
         ])
 
     panels["cor_app"] = ts_panel("cor_app",
-        "Bajaj Application Symptoms — probe & SLO",
+        "Application Symptoms — probe latency & SLO burn",
         [
-            'max(airtel_probe_latency_ms{tenant_id="tenant_bajaj_finance"})',
-            'max(tenant_slo_burn_rate{tenant_id="tenant_bajaj_finance"})',
+            'max(airtel_probe_latency_ms{tenant_id="$tenant_id"})',
+            'max(tenant_slo_burn_rate{tenant_id="$tenant_id"})',
         ])
 
-    # Bajaj WAL + checkpoint pressure (the PG-internal evidence of the IO stall)
+    # PG-internal evidence of an IO stall
     panels["cor_pg_wal"] = ts_panel("cor_pg_wal",
-        "Bajaj PG — WAL & Checkpoint Pressure",
+        "DB — WAL & Checkpoint Sync Pressure",
         [
-            'rate(pg_wal_bytes_total{pg_instance="pg-bajaj-01"}[5m])',
-            'rate(pg_checkpoint_sync_time_seconds_total{pg_instance="pg-bajaj-01"}[5m]) * 1000000',
+            'rate(pg_wal_bytes_total{pg_instance="$pg_instance"}[5m])',
+            'rate(pg_checkpoint_sync_time_seconds_total{pg_instance="$pg_instance"}[5m]) * 1000000',
         ])
 
-    # Bajaj wait events — IO waits should dominate during the breach
     panels["cor_pg_waits"] = ts_panel("cor_pg_waits",
-        "Bajaj PG — Sessions by wait_event_type",
-        'sum by (wait_event_type)(pg_stat_activity_count{pg_instance="pg-bajaj-01"})',
+        "DB — Sessions by wait_event_type",
+        'sum by (wait_event_type)(pg_stat_activity_count{pg_instance="$pg_instance"})',
         variant="stacked-area")
 
-    # Blast radius: every tenant whose VM lives on the degraded shared datastore
-    panels["cor_blast"] = ts_panel("cor_blast",
-        "Blast Radius — VM disk write latency by tenant on datastore-202",
-        'max by (tenant_id, vm_name)(vmware_vm_disk_write_latency_ms{datastore_id="datastore-202"})',
+    # Blast-radius cuts — same shared infra, every tenant
+    panels["cor_blast_ds"] = ts_panel("cor_blast_ds",
+        "Blast — VM disk write latency by tenant on selected datastore",
+        'max by (tenant_id, vm_name)(vmware_vm_disk_write_latency_ms{datastore_id="$datastore_id"})',
         variant="stacked-bar")
 
-    # Same host neighbours — show every VM that shares host-1017
-    panels["cor_host_blast"] = ts_panel("cor_host_blast",
-        "Blast Radius — VM CPU Ready on host-1017",
-        'max by (tenant_id, vm_name)(vmware_vm_cpu_ready_summation_ms{esxi_host_id="host-1017"})',
+    panels["cor_blast_host"] = ts_panel("cor_blast_host",
+        "Blast — VM CPU ready by tenant on selected host",
+        'max by (tenant_id, vm_name)(vmware_vm_cpu_ready_summation_ms{esxi_host_id="$esxi_host_id"})',
         variant="stacked-bar")
 
-    # Indigo as the at-risk tenant — show its PG p95 trailing Bajaj's
-    panels["cor_indigo_chain"] = ts_panel("cor_indigo_chain",
-        "IndiGo Chain — same datastore, lower amplitude",
-        [
-            'max(vmware_vm_disk_write_latency_ms{vm_name="vm-indigo-pg-01"})',
-            'max(node_cpu_iowait_percent{vm_name="vm-indigo-pg-01"})',
-            'max(pg_query_latency_p95_ms{pg_instance="pg-indigo-01"})',
-            'max(tenant_slo_burn_rate{tenant_id="tenant_indigo_ops"})',
-        ])
+    panels["cor_blast_array"] = ts_panel("cor_blast_array",
+        "Blast — Datastores in same storage array, write latency",
+        'max by (datastore_name)(vmware_datastore_write_latency_ms{storage_array="$storage_array"})')
 
-    # Shared storage array — broader blast radius
-    panels["cor_array_blast"] = ts_panel("cor_array_blast",
-        "Storage Array Blast — gold-01 datastores write latency",
-        'max by (datastore_name)(vmware_datastore_write_latency_ms{storage_array="san-delhi-gold-01"})')
+    # Per-tenant SLO impact across the fleet
+    panels["cor_fleet_burn"] = ts_panel("cor_fleet_burn",
+        "Fleet — SLO burn rate by tenant",
+        'max by (tenant_id)(tenant_slo_burn_rate)')
 
-    # Active alerts table
-    panels["cor_alerts"] = ts_panel("cor_alerts",
-        "Active Alerts",
+    # Top contended VMs across the entire fleet (no entity in the query)
+    panels["cor_top_vm"] = ts_panel("cor_top_vm",
+        "Fleet — VM disk write latency",
+        'max by (tenant_id, vm_name)(vmware_vm_disk_write_latency_ms)')
+
+    # Active alerts
+    panels["cor_alerts"] = ts_panel("cor_alerts", "Active Alerts",
         'max by (alert_name, alert_severity, suspected_layer, affected_entity_id)(cardinal_alert_active)',
         variant="stacked-bar")
 
     sections = [
-        {"title": "The Breach", "cells": row_at(0,
-            ("cor_burn", 6, 3), ("cor_p95", 6, 3), ("cor_ds", 6, 3), ("cor_at_risk", 6, 3))},
-        {"title": "Bajaj — Cause to Symptom (datastore → VM → PG)", "cells": row_at(0,
-            ("cor_chain_lat", 24, 8))},
+        {"title": "Selected Entity — KPIs", "cells": row_at(0,
+            ("cor_burn", 6, 3), ("cor_p95", 6, 3), ("cor_ds", 6, 3), ("cor_vm_dw", 6, 3))},
+        {"title": "Latency Chain — Infrastructure to Application",
+         "cells": row_at(0, ("cor_chain_lat", 24, 8))},
         {"title": "Host & Guest Evidence", "cells": row_at(0,
             ("cor_chain_host", 12, 7), ("cor_chain_guest", 12, 7))},
-        {"title": "Bajaj — PG-internal Evidence", "cells": row_at(0,
+        {"title": "DB-Internal Evidence", "cells": row_at(0,
             ("cor_pg_wal", 12, 6), ("cor_pg_waits", 12, 6))},
-        {"title": "Bajaj — Application Symptoms", "cells": row_at(0,
+        {"title": "Application Symptoms", "cells": row_at(0,
             ("cor_app", 24, 6))},
-        {"title": "Blast Radius — Shared Datastore (datastore-202)", "cells": row_at(0,
-            ("cor_blast", 24, 6))},
-        {"title": "Blast Radius — Shared Host (host-1017)", "cells": row_at(0,
-            ("cor_host_blast", 24, 6))},
-        {"title": "Blast Radius — Shared Storage Array (san-delhi-gold-01)", "cells": row_at(0,
-            ("cor_array_blast", 24, 6))},
-        {"title": "At-Risk Tenant — IndiGo (same datastore, lower amplitude)", "cells": row_at(0,
-            ("cor_indigo_chain", 24, 8))},
+        {"title": "Blast Radius — Same Shared Datastore", "cells": row_at(0,
+            ("cor_blast_ds", 24, 6))},
+        {"title": "Blast Radius — Same ESXi Host", "cells": row_at(0,
+            ("cor_blast_host", 24, 6))},
+        {"title": "Blast Radius — Same Storage Array", "cells": row_at(0,
+            ("cor_blast_array", 24, 6))},
+        {"title": "Fleet Context", "cells": row_at(0,
+            ("cor_fleet_burn", 12, 6), ("cor_top_vm", 12, 6))},
         {"title": "Active Alerts", "cells": row_at(0,
             ("cor_alerts", 24, 6))},
     ]
@@ -596,7 +606,7 @@ def dashboard_correlation():
         "name": "Airtel — Correlation & Blast Radius",
         "spec": {
             "duration": "1h", "schemaVersion": 2,
-            "variables": [],
+            "variables": [VAR_TENANT, VAR_PG, VAR_VM, VAR_HOST, VAR_DATASTORE, VAR_ARRAY],
             "panels": panels,
             "sections": sections,
         },
