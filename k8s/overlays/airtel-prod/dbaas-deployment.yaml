@@ -26,7 +26,6 @@ spec:
       containers:
         - name: dbaas
           image: ghcr.io/cardinalhq/griffin-commerce-demo
-          args: ["dbaas"]
           imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
@@ -37,6 +36,10 @@ spec:
               containerPort: 9999
               protocol: TCP
           env:
+            # entrypoint.sh dispatches by SERVICE_NAME; without this the
+            # container boots as `frontend` (nginx) and crashes.
+            - name: SERVICE_NAME
+              value: "dbaas"
             - name: OTEL_SERVICE_NAME
               value: "dbaas"
             - name: OTEL_RESOURCE_ATTRIBUTES
