@@ -27,9 +27,12 @@ PASS=$(kubectl -n maestro get secret pg-credentials -o jsonpath='{.data.MAESTRO_
 PGPASSWORD="$PASS" psql -h localhost -p 15432 -U maestro -d maestro -f /tmp/airtel-dashboards.sql
 ```
 
-The dashboards land in the Airtel org
-(`3aa7b421-0ecb-48a8-bf3a-b7397814862a`). Open them in the Cardinal UI
-under `Dashboards` once the airtel telemetry simulator is producing data.
+The dashboards land in the **Cardinal HQ** org
+(`c4375e34-dfcf-498a-8ba3-a02d119baf82`). That's where the prod
+node-local OTel collector daemonset routes telemetry; the Airtel org
+(`3aa7b421-…`) is the natural-sounding target but the collector isn't
+wired to it. Override by editing `ORG_ID` in `author.py` if you point
+the collector at a different org.
 
 ## Why direct SQL, not the maestro REST API
 

@@ -23,7 +23,11 @@ import sys
 import urllib.request
 import urllib.error
 
-ORG_ID = "3aa7b421-0ecb-48a8-bf3a-b7397814862a"  # Airtel
+# Cardinal HQ — the org the prod aws-prod-us-east-2-global node-local
+# collector routes to. The Airtel org (3aa7b421-…) was the intuitive
+# target but the collector isn't wired to it; until that changes, the
+# telemetry surfaces in Cardinal HQ.
+ORG_ID = "c4375e34-dfcf-498a-8ba3-a02d119baf82"
 MAESTRO_URL = "http://localhost:4200"
 
 # ---------- helpers ----------
