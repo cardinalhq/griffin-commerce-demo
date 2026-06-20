@@ -57,6 +57,11 @@ spec:
               value: "http://$(HOST_IP):4318"
             - name: OTEL_INSECURE
               value: "true"
+            # 10s metric export so a 1m rate window has 6 samples; the
+            # default 60s gives 1-2 samples per [1m] and dashboards
+            # plot a counter rate as a square wave.
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "10000"
             # Cap log emission cadence to keep the demo log volume sensible.
             - name: DBAAS_LOG_INTERVAL_SEC
               value: "5"

@@ -179,7 +179,7 @@ def dashboard_tenant_health():
 
     # Fleet workload (3) — proves the fleet is doing real work
     panels["th_commit_rate"] = ts_panel("th_commit_rate", "Commit Rate by DB (tx/s)",
-        'rate(pg_stat_database_xact_commit_total[1m])')
+        'rate(pg_stat_database_xact_commit_total[5m])')
     panels["th_backends"]    = ts_panel("th_backends", "Active Backends by DB",
         'max by (pg_instance)(pg_stat_database_numbackends)')
     panels["th_cache_all"]   = ts_panel("th_cache_all", "Buffer Cache Hit Ratio by DB",
@@ -246,10 +246,10 @@ def dashboard_pg_detail():
     panels["pg_cache"]   = label_panel("pg_cache",   "Buffer Cache Hit",
         'min(pg_database_cache_hit_ratio{pg_instance="$pg_instance"}) * 100', color="#10b981", unit="%")
     panels["pg_qps"]     = label_panel("pg_qps",     "Commit Rate",
-        'sum(rate(pg_stat_database_xact_commit_total{pg_instance="$pg_instance"}[1m]))',
+        'sum(rate(pg_stat_database_xact_commit_total{pg_instance="$pg_instance"}[5m]))',
         color="#3b82f6", unit="tx/s")
     panels["pg_wal_rate"] = label_panel("pg_wal_rate", "WAL Throughput",
-        'sum(rate(pg_wal_bytes_total{pg_instance="$pg_instance"}[1m])) / 1024 / 1024',
+        'sum(rate(pg_wal_bytes_total{pg_instance="$pg_instance"}[5m])) / 1024 / 1024',
         color="#3b82f6", unit="MB/s")
     panels["pg_repl"]    = label_panel("pg_repl",    "Replication Lag",
         'max(pg_replication_lag_seconds{pg_instance="$pg_instance"})', color="#f59e0b", unit="s")
@@ -260,18 +260,18 @@ def dashboard_pg_detail():
     panels["pg_p99_hist"]  = ts_panel("pg_p99_hist", "p99 Query Latency from Histogram (s)",
         'histogram_quantile(0.99, sum by (le)(rate(pg_query_latency_seconds_bucket{pg_instance="$pg_instance"}[5m])))')
     panels["pg_lat_buckets"] = ts_panel("pg_lat_buckets", "Latency Bucket Rate by le (req/s)",
-        'sum by (le)(rate(pg_query_latency_seconds_bucket{pg_instance="$pg_instance"}[1m]))',
+        'sum by (le)(rate(pg_query_latency_seconds_bucket{pg_instance="$pg_instance"}[5m]))',
         variant="stacked-area")
 
     # Throughput (3)
     panels["pg_tx_rate"]   = ts_panel("pg_tx_rate", "Transaction Rate (tx/s)",
-        ['sum(rate(pg_stat_database_xact_commit_total{pg_instance="$pg_instance"}[1m]))',
-         'sum(rate(pg_stat_database_xact_rollback_total{pg_instance="$pg_instance"}[1m]))'])
+        ['sum(rate(pg_stat_database_xact_commit_total{pg_instance="$pg_instance"}[5m]))',
+         'sum(rate(pg_stat_database_xact_rollback_total{pg_instance="$pg_instance"}[5m]))'])
     panels["pg_tup_rate"]  = ts_panel("pg_tup_rate", "Tuples Fetched (rows/s)",
-        'sum(rate(pg_stat_database_tup_fetched_total{pg_instance="$pg_instance"}[1m]))')
+        'sum(rate(pg_stat_database_tup_fetched_total{pg_instance="$pg_instance"}[5m]))')
     panels["pg_blk_rate"]  = ts_panel("pg_blk_rate", "Block Reads vs Cache Hits (blocks/s)",
-        ['sum(rate(pg_stat_database_blks_read_total{pg_instance="$pg_instance"}[1m]))',
-         'sum(rate(pg_stat_database_blks_hit_total{pg_instance="$pg_instance"}[1m]))'])
+        ['sum(rate(pg_stat_database_blks_read_total{pg_instance="$pg_instance"}[5m]))',
+         'sum(rate(pg_stat_database_blks_hit_total{pg_instance="$pg_instance"}[5m]))'])
 
     # Sessions & wait events (2)
     panels["pg_acts_wet"]  = ts_panel("pg_acts_wet", "Sessions by wait_event_type",
@@ -283,11 +283,11 @@ def dashboard_pg_detail():
 
     # Checkpoint & WAL (3)
     panels["pg_cp_write"]  = ts_panel("pg_cp_write", "Checkpoint Write Time Rate (s/s)",
-        'rate(pg_checkpoint_write_time_seconds_total{pg_instance="$pg_instance"}[1m])')
+        'rate(pg_checkpoint_write_time_seconds_total{pg_instance="$pg_instance"}[5m])')
     panels["pg_cp_sync"]   = ts_panel("pg_cp_sync", "Checkpoint Sync Time Rate (s/s)",
-        'rate(pg_checkpoint_sync_time_seconds_total{pg_instance="$pg_instance"}[1m])')
+        'rate(pg_checkpoint_sync_time_seconds_total{pg_instance="$pg_instance"}[5m])')
     panels["pg_wal"]       = ts_panel("pg_wal", "WAL Generation Rate (bytes/s)",
-        'sum(rate(pg_wal_bytes_total{pg_instance="$pg_instance"}[1m]))')
+        'sum(rate(pg_wal_bytes_total{pg_instance="$pg_instance"}[5m]))')
 
     # Locks, cache & replication (3)
     panels["pg_locks"]     = ts_panel("pg_locks", "Locks Held by Mode",
@@ -397,9 +397,9 @@ def dashboard_vmware_infra():
     panels["host_dw"]     = ts_panel("host_dw", "Host Disk Write Latency (ms)",
         'max by (esxi_host_name)(vmware_host_disk_write_latency_ms)')
     panels["host_drx"]    = ts_panel("host_drx", "Host Net Dropped Rx (pkts/s)",
-        'sum by (esxi_host_name)(rate(vmware_host_net_dropped_rx_total[1m]))')
+        'sum by (esxi_host_name)(rate(vmware_host_net_dropped_rx_total[5m]))')
     panels["host_dtx"]    = ts_panel("host_dtx", "Host Net Dropped Tx (pkts/s)",
-        'sum by (esxi_host_name)(rate(vmware_host_net_dropped_tx_total[1m]))')
+        'sum by (esxi_host_name)(rate(vmware_host_net_dropped_tx_total[5m]))')
 
     # VM CPU (3)
     panels["vm_cpu"]      = ts_panel("vm_cpu", "VM CPU Usage by VM (%)",
@@ -423,7 +423,7 @@ def dashboard_vmware_infra():
     panels["vm_steal"]    = ts_panel("vm_steal", "Linux CPU steal by VM (%)",
         'max by (vm_name)(node_cpu_steal_percent)')
     panels["vm_swap"]     = ts_panel("vm_swap", "Linux Swap In+Out by VM (pages/s)",
-        'sum by (vm_name)(rate(node_vmstat_pswpin[1m])) + sum by (vm_name)(rate(node_vmstat_pswpout[1m]))')
+        'sum by (vm_name)(rate(node_vmstat_pswpin[5m])) + sum by (vm_name)(rate(node_vmstat_pswpout[5m]))')
 
     # Blast-radius helper (1)
     panels["bl_tenants_ds"] = ts_panel("bl_tenants_ds",
@@ -527,8 +527,8 @@ def dashboard_correlation():
     panels["cor_pg_wal"] = ts_panel("cor_pg_wal",
         "Bajaj PG — WAL & Checkpoint Pressure",
         [
-            'rate(pg_wal_bytes_total{pg_instance="pg-bajaj-01"}[1m])',
-            'rate(pg_checkpoint_sync_time_seconds_total{pg_instance="pg-bajaj-01"}[1m]) * 1000000',
+            'rate(pg_wal_bytes_total{pg_instance="pg-bajaj-01"}[5m])',
+            'rate(pg_checkpoint_sync_time_seconds_total{pg_instance="pg-bajaj-01"}[5m]) * 1000000',
         ])
 
     # Bajaj wait events — IO waits should dominate during the breach
