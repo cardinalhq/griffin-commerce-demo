@@ -124,15 +124,21 @@ def dashboard_tenant_health():
     signals on the page."""
     panels = {}
 
-    # Fleet KPI strip (4 tiles) — total fleet posture
+    # Fleet KPI strip (4 tiles) — total fleet posture.
+    # Use last_over_time(...[5m]) so the count is robust to a single
+    # missed scrape. Use `or on() vector(0)` on the filtered counts so
+    # zero-matches render "0" instead of "No data".
     panels["th_kpi_tenants"]  = label_panel("th_kpi_tenants", "Tenants",
-        'count(count by (tenant_id)(tenant_slo_burn_rate))', color="#3b82f6")
+        'count(group by (tenant_id)(last_over_time(tenant_slo_burn_rate[5m])))',
+        color="#3b82f6")
     panels["th_kpi_dbs"]      = label_panel("th_kpi_dbs", "DB Instances",
-        'count(count by (pg_instance)(pg_up))', color="#3b82f6")
+        'count(group by (pg_instance)(last_over_time(pg_up[5m])))',
+        color="#3b82f6")
     panels["th_kpi_breach"]   = label_panel("th_kpi_breach", "Tenants Breaching SLO",
-        'count(count by (tenant_id)(tenant_slo_burn_rate > 10))', color="#ef4444")
+        '(count(last_over_time(tenant_slo_burn_rate[5m]) > 10) or on() vector(0))',
+        color="#ef4444")
     panels["th_kpi_atrisk"]   = label_panel("th_kpi_atrisk", "Tenants At Risk",
-        'count(count by (tenant_id)(tenant_slo_burn_rate > 2 and tenant_slo_burn_rate <= 10))',
+        '(count(last_over_time(tenant_slo_burn_rate[5m]) > 2 and last_over_time(tenant_slo_burn_rate[5m]) <= 10) or on() vector(0))',
         color="#f59e0b")
 
     # Selected tenant deep tile row (4) — drives the rest of the page
@@ -349,11 +355,13 @@ def dashboard_vmware_infra():
 
     # Inventory KPI tiles (4)
     panels["vi_hosts"]    = label_panel("vi_hosts", "ESXi Hosts",
-        'count(count by (esxi_host_id)(vmware_host_cpu_usage_percent))', color="#3b82f6")
+        'count(group by (esxi_host_id)(last_over_time(vmware_host_cpu_usage_percent[5m])))',
+        color="#3b82f6")
     panels["vi_vms"]      = label_panel("vi_vms", "VMs (powered on)",
-        'sum(vmware_vm_power_state)', color="#3b82f6")
+        'sum(last_over_time(vmware_vm_power_state[5m]))', color="#3b82f6")
     panels["vi_ds"]       = label_panel("vi_ds", "Datastores",
-        'count(count by (datastore_id)(vmware_datastore_capacity_bytes))', color="#3b82f6")
+        'count(group by (datastore_id)(last_over_time(vmware_datastore_capacity_bytes[5m])))',
+        color="#3b82f6")
     panels["vi_cap_used"] = label_panel("vi_cap_used", "Storage Used",
         '(sum(vmware_datastore_capacity_bytes) - sum(vmware_datastore_free_bytes)) / sum(vmware_datastore_capacity_bytes) * 100',
         color="#f59e0b", unit="%")
