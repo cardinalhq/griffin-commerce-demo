@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: solar-faults
+  labels:
+    app: solar
+    purpose: adani-solar-telemetry-simulator
+spec:
+  type: ClusterIP
+  selector:
+    app: solar
+  ports:
+    - name: faults
+      port: 9999
+      targetPort: faults
+      protocol: TCP
