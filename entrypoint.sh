@@ -41,6 +41,11 @@ case "$SERVICE_NAME" in
     # OTLP metric emitter that polls the controlplane for fault knobs.
     /app/bin/griffin dbaas
     ;;
+  solar)
+    # Adani Khavda solar farm simulator. OTLP metric+log emitter with a
+    # local :9999 fault HTTP server reachable via kubectl port-forward.
+    /app/bin/griffin solar
+    ;;
   loadgen)
     # Continuous low-rate traffic against the cart service so the
     # customer-persona side of the Airtel demo has live traces to
@@ -49,7 +54,7 @@ case "$SERVICE_NAME" in
     ;;
   *)
     echo "Unknown service: $SERVICE_NAME"
-    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane, dbaas"
+    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane, dbaas, solar"
     exit 1
     ;;
 esac
