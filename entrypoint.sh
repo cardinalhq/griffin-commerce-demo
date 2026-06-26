@@ -41,6 +41,12 @@ case "$SERVICE_NAME" in
     # OTLP metric emitter that polls the controlplane for fault knobs.
     /app/bin/griffin dbaas
     ;;
+  nvcf)
+    # NVIDIA Cloud Functions simulator. Pure OTLP metric emitter with a
+    # local :9998 fault HTTP server reachable via kubectl port-forward.
+    # See docs/specs/nvcf.md.
+    /app/bin/griffin nvcf
+    ;;
   loadgen)
     # Continuous low-rate traffic against the cart service so the
     # customer-persona side of the Airtel demo has live traces to
@@ -49,7 +55,7 @@ case "$SERVICE_NAME" in
     ;;
   *)
     echo "Unknown service: $SERVICE_NAME"
-    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane, dbaas"
+    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane, dbaas, nvcf"
     exit 1
     ;;
 esac

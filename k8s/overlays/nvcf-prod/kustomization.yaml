@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Standalone overlay for the NVCF (NVIDIA Cloud Functions) GPU-inference
+# telemetry simulator running in the lakerunner aws-prod-us-east-2-global
+# cluster. Does NOT depend on k8s/base — base bundles the commerce
+# services (catalog, cart, frontend, etc.) which are unrelated to the
+# NVCF demo. We ship only the nvcf Deployment, a ClusterIP Service for
+# the fault HTTP endpoint, and a Namespace.
+namespace: nvcf-demo
+
+resources:
+  - namespace.yaml
+  - nvcf-deployment.yaml
+  - nvcf-service.yaml
+
+images:
+  - name: ghcr.io/cardinalhq/griffin-commerce-demo
+    # Pin this to the release tag that contains the services/nvcf/
+    # package (the M1 scaffold lands in v0.5.1 or later). Update after
+    # the release pipeline publishes the image.
+    newTag: v0.5.1
