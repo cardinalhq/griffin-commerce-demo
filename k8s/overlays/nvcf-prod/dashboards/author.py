@@ -30,7 +30,12 @@ dashboard). 24-column grid; cells carry {x,y,w,h,i}. Panels are 'label'
 """
 import json
 
-ORG_ID = "3aa7b421-0ecb-48a8-bf3a-b7397814862a"  # Cardinal demo org
+# Target: "Cardinal HQ - Demo" org in the prod-us-east-2-global maestro DB.
+# The first apply targeted "Airtel" (3aa7b421-...) by mistake — that org has
+# no metric segments routed to it. AIRTEL_ORG_ID below drives the cleanup
+# DELETE that strips the stale rows.
+ORG_ID = "6d69ff5f-d386-491e-a715-306a8f172b53"  # Cardinal HQ - Demo
+AIRTEL_ORG_ID = "3aa7b421-0ecb-48a8-bf3a-b7397814862a"  # stale target, cleanup only
 
 
 # ---------- helpers ----------
@@ -485,8 +490,10 @@ def main():
         d = b()
         spec_json = json.dumps(d["spec"]).replace("'", "''")
         name = d["name"].replace("'", "''")
-        # Upsert by (org_id, name) — delete-then-insert is safest given the
-        # name isn't a unique index.
+        # Cleanup: drop any prior copy from the wrong-target Airtel org.
+        print(f"DELETE FROM maestro_dashboards WHERE org_id = '{AIRTEL_ORG_ID}' AND name = '{name}' AND deleted_at IS NULL;")
+        # Upsert into the real demo org by (org_id, name) — delete-then-insert
+        # is safest given the name isn't a unique index.
         print(f"DELETE FROM maestro_dashboards WHERE org_id = '{ORG_ID}' AND name = '{name}' AND deleted_at IS NULL;")
         print(f"INSERT INTO maestro_dashboards (org_id, name, spec) "
               f"VALUES ('{ORG_ID}', '{name}', '{spec_json}'::jsonb) "

@@ -39,10 +39,15 @@ PGPASSWORD="$PASS" psql -h localhost -p 15432 -U maestro -d maestro -f /tmp/nvcf
 ```
 
 The dashboards land in the Cardinal demo org
-(`3aa7b421-0ecb-48a8-bf3a-b7397814862a`, named "Airtel" historically —
-same org the airtel/adani demo pods send telemetry to via the
-node-local OTel agent DaemonSet). Open them in the Cardinal UI under
-`Dashboards` once the nvcf-prod pod is producing data.
+(`6d69ff5f-d386-491e-a715-306a8f172b53`, named "Cardinal HQ - Demo" —
+the org the nvcf pod authenticates to with its "Demo Apps" ingest key,
+see `../README.md` for the deployment side of this contract). Open
+them in the Cardinal UI under `Dashboards` once the nvcf-prod pod is
+producing data.
+
+The SQL also issues a cleanup `DELETE` against the original (wrong)
+target org `3aa7b421-...` ("Airtel"), where the first rev of this
+author landed by mistake. Safe to rerun if not already cleaned.
 
 ## Why direct SQL, not the maestro REST API
 
