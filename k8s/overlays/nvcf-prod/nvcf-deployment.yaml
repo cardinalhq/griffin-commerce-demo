@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nvcf
+  labels:
+    app: nvcf
+    purpose: nvcf-telemetry-simulator
+spec:
+  replicas: 1
+  strategy:
+    # Recreate so two pods can't both think they're driving the same
+    # chaos knob. Telemetry continuity isn't important during deploy.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nvcf
+  template:
+    metadata:
+      labels:
+        app: nvcf
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nvcf
+          image: ghcr.io/cardinalhq/griffin-commerce-demo
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: faults
+              containerPort: 9998
+              protocol: TCP
+          env:
+            # entrypoint.sh dispatches by SERVICE_NAME; without this the
+            # container boots as `frontend` (nginx) and crashes.
+            - name: SERVICE_NAME
+              value: "nvcf"
+            - name: OTEL_SERVICE_NAME
+              value: "nvcf"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              # scenario_id + scenario_version match docs/specs/nvcf.md so
+              # demo dashboards can filter to this simulator's series.
+              # deployment.environment=nvcf-demo lands these in the same
+              # Cardinal demo org the airtel-demo and adani-demo pods use.
+              value: "scenario_id=nvcf_gpu_inference_simulator,scenario_version=0.1,deployment.environment=nvcf-demo"
+            # Send OTLP to the node-local collector DaemonSet (matches the
+            # pattern airtel-demo and adani-demo use today). The collector
+            # handles upstream routing + auth, so the pod needs no Cardinal
+            # API key.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(HOST_IP):4318"
+            - name: OTEL_INSECURE
+              value: "true"
+            # 10s metric export — a 1m rate window then has 6 samples;
+            # the SDK default of 60s gives 1–2 samples per [1m] and the
+            # dashboards plot counter rates as a square wave.
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "10000"
+            # Fault HTTP port. Matches services/nvcf/httpserver.go default.
+            - name: NVCF_FAULT_PORT
+              value: "9998"
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "192Mi"
+            limits:
+              cpu: "750m"
+              memory: "768Mi"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9998
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9998
+            initialDelaySeconds: 5
+            periodSeconds: 10
