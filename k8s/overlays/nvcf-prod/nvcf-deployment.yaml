@@ -45,21 +45,28 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               # scenario_id + scenario_version match docs/specs/nvcf.md so
               # demo dashboards can filter to this simulator's series.
-              # deployment.environment=nvcf-demo lands these in the same
-              # Cardinal demo org the airtel-demo and adani-demo pods use.
               value: "scenario_id=nvcf_gpu_inference_simulator,scenario_version=0.1,deployment.environment=nvcf-demo"
-            # Send OTLP to the node-local collector DaemonSet (matches the
-            # pattern airtel-demo and adani-demo use today). The collector
-            # handles upstream routing + auth, so the pod needs no Cardinal
-            # API key.
-            - name: HOST_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.hostIP
+            # Send OTLP directly to the Cardinal SaaS intake with the
+            # "Cardinal HQ - Demo" org's "Demo Apps" ingest key so segments
+            # land in 6d69ff5f-d386-491e-a715-306a8f172b53 — the org the
+            # NVCF dashboards live in. The node-local agent DaemonSet would
+            # tag segments to the parent Cardinal HQ org instead, which is
+            # how the first deploy ended up invisible to the demo dashboards.
+            #
+            # The API key is held in Secret nvcf-cardinal-ingest (key
+            # OTEL_EXPORTER_OTLP_HEADERS, value
+            #   x-cardinalhq-api-key=<demo-apps-key>). One-shot create per
+            # cluster — see k8s/overlays/nvcf-prod/README.md for the exact
+            # kubectl invocation; the plaintext key lives in
+            # maestro.maestro_ingest_api_keys for
+            # org_id=6d69ff5f-... name='Demo Apps'.
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://$(HOST_IP):4318"
-            - name: OTEL_INSECURE
-              value: "true"
+              value: "https://otelhttp.intake.us-east-2.aws.cardinalhq.io"
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: nvcf-cardinal-ingest
+                  key: OTEL_EXPORTER_OTLP_HEADERS
             # 10s metric export — a 1m rate window then has 6 samples;
             # the SDK default of 60s gives 1–2 samples per [1m] and the
             # dashboards plot counter rates as a square wave.
