@@ -15,11 +15,11 @@ FROM mcr.microsoft.com/playwright:v1.47.0-jammy
 # stamps that pod-level securityContext onto every Deployment.
 #
 # WORKDIR creates its target dir as root:root by default — a subsequent
-# `USER pwuser` then can't `npm install` because it can't create
+# `USER 1000:1000` then can't `npm install` because it can't create
 # node_modules under a root-owned parent. Pre-create + chown fixes it.
 RUN mkdir -p /home/pwuser/app && chown pwuser:pwuser /home/pwuser/app
 WORKDIR /home/pwuser/app
-USER pwuser
+USER 1000:1000
 
 COPY --chown=pwuser:pwuser package.json ./
 # npm ci needs a lockfile; the loadgen is one dep and rarely churns, so
