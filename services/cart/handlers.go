@@ -279,7 +279,10 @@ type CheckoutResponse struct {
 	Message    string  `json:"message"`
 }
 
-// CheckoutHandler initiates checkout for a cart.
+// CheckoutHandler initiates checkout for a cart and drives the downstream
+// fan-out: shipping.rates → payment.charge → shipping.ship. Payment and
+// ship failures propagate as 502 so the service graph shows the real
+// dependency and the failed-cart trace roots at cart with error children.
 func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	statusCode := http.StatusOK
@@ -312,22 +315,75 @@ func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := CheckoutResponse{
-		CartID:     cart.ID,
-		CustomerID: cart.CustomerID,
-		Total:      cart.Total,
-		ItemCount:  len(cart.Items),
-		Message:    "Ready for checkout",
-	}
-
 	span.SetAttributes(
 		attribute.String("cart.customer_id", cart.CustomerID),
 		attribute.Int("cart.item_count", len(cart.Items)),
 		attribute.Float64("cart.total", cart.Total),
 	)
-	slog.InfoContext(r.Context(), "checkout initiated",
+
+	// Shipping rates: best-effort, informational span. A rates failure
+	// shouldn't block checkout — real e-commerce falls back to a default
+	// rate — but we log so it's visible in the trace.
+	if err := GetShippingRates(r.Context()); err != nil {
+		slog.WarnContext(r.Context(), "shipping rates unavailable, continuing",
+			"cart_id", cart.ID, "error", err,
+		)
+	}
+
+	// Payment charge. Non-2xx (including 402 from the processor's baseline
+	// failure_rate) fails the whole checkout with 502 — the customer sees
+	// a failed checkout, the trace shows the failing payment child span,
+	// and the payment.processor attribute reveals which processor rejected.
+	charge, err := ChargePayment(r.Context(), cart.ID, cart.Total)
+	if err != nil {
+		statusCode = http.StatusBadGateway
+		correlationID := common.GetCorrelationID(r.Context())
+		appErr := common.NewAppError("PAYMENT_FAILED", err.Error())
+		slog.ErrorContext(r.Context(), "checkout payment failed",
+			"cart_id", cart.ID, "customer_id", cart.CustomerID, "error", err,
+		)
+		common.WriteErrorResponse(r.Context(), w, appErr, statusCode, correlationID)
+		return
+	}
+	span.SetAttributes(
+		attribute.String("payment.transaction_id", charge.TransactionID),
+		attribute.String("payment.processor", charge.Processor),
+	)
+
+	// Shipment creation. Same treatment as payment: non-2xx (e.g. carrier
+	// declined per baseline failure_rate) fails the checkout with 502.
+	ship, err := CreateShipment(r.Context(), cart.ID)
+	if err != nil {
+		statusCode = http.StatusBadGateway
+		correlationID := common.GetCorrelationID(r.Context())
+		appErr := common.NewAppError("SHIPPING_FAILED", err.Error())
+		slog.ErrorContext(r.Context(), "checkout shipping failed",
+			"cart_id", cart.ID, "customer_id", cart.CustomerID,
+			"payment_transaction_id", charge.TransactionID, "error", err,
+		)
+		common.WriteErrorResponse(r.Context(), w, appErr, statusCode, correlationID)
+		return
+	}
+	span.SetAttributes(
+		attribute.String("shipping.shipment_id", ship.ShipmentID),
+		attribute.String("shipping.carrier", ship.Carrier),
+	)
+
+	response := CheckoutResponse{
+		CartID:     cart.ID,
+		CustomerID: cart.CustomerID,
+		Total:      cart.Total,
+		ItemCount:  len(cart.Items),
+		Message:    "Checkout complete",
+	}
+
+	slog.InfoContext(r.Context(), "checkout complete",
 		"cart_id", cart.ID, "customer_id", cart.CustomerID,
 		"item_count", len(cart.Items), "total", cart.Total,
+		"payment_transaction_id", charge.TransactionID,
+		"payment_processor", charge.Processor,
+		"shipment_id", ship.ShipmentID,
+		"shipping_carrier", ship.Carrier,
 	)
 
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {

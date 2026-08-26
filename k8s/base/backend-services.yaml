@@ -142,6 +142,10 @@ spec:
           value: "8082"
         - name: CATALOG_SERVICE_URL
           value: "http://catalog:8080"
+        - name: PAYMENT_SERVICE_URL
+          value: "http://payment:8081"
+        - name: SHIPPING_SERVICE_URL
+          value: "http://shipping:8083"
         resources:
           requests:
             memory: "128Mi"

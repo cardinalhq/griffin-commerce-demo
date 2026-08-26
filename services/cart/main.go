@@ -42,6 +42,20 @@ func Start() error {
 	}
 	InitProductClient(catalogURL)
 
+	// Initialize payment + shipping clients so CheckoutHandler can fan out.
+	// Defaults match the k8s Service names in k8s/base/backend-services.yaml.
+	paymentURL := os.Getenv("PAYMENT_SERVICE_URL")
+	if paymentURL == "" {
+		paymentURL = "http://payment:8081"
+	}
+	InitPaymentClient(paymentURL)
+
+	shippingURL := os.Getenv("SHIPPING_SERVICE_URL")
+	if shippingURL == "" {
+		shippingURL = "http://shipping:8083"
+	}
+	InitShippingClient(shippingURL)
+
 	// Wire fault-injection client.
 	cpuBurn := faults.NewCPUBurnController()
 	faultsClient = faults.NewClient(faults.ClientOpts{
@@ -89,7 +103,12 @@ func Start() error {
 	// Start server in a goroutine
 	serverErr := make(chan error, 1)
 	go func() {
-		slog.Info("Cart Service starting", "port", port, "catalog_url", catalogURL)
+		slog.Info("Cart Service starting",
+			"port", port,
+			"catalog_url", catalogURL,
+			"payment_url", paymentURL,
+			"shipping_url", shippingURL,
+		)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			serverErr <- fmt.Errorf("server failed: %w", err)
 		}
