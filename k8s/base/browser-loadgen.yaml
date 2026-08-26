@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 CardinalHQ, Inc.
+#
+# Playwright-driven RUM traffic. Each container replica keeps N browser
+# contexts navigating the frontend continuously, which is what makes the
+# in-browser OTel-web SDK emit spans / logs. No Service — outbound only.
+#
+# Shipped as a separate image (griffin-browser-loadgen) so it doesn't
+# pull in Chromium every time someone deploys the goreleaser griffin
+# image; the two release together on the same git tag.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: browser-loadgen
+  labels:
+    app: browser-loadgen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: browser-loadgen
+  template:
+    metadata:
+      labels:
+        app: browser-loadgen
+    spec:
+      containers:
+        - name: browser-loadgen
+          image: ghcr.io/cardinalhq/griffin-browser-loadgen
+          env:
+            - name: TARGET_URL
+              value: "http://frontend:5173"
+            - name: CONCURRENCY
+              value: "2"
+            - name: PAUSE_MIN_MS
+              value: "1500"
+            - name: PAUSE_MAX_MS
+              value: "6000"
+            - name: CHAOS_ROUTE_PROBABILITY
+              value: "0.05"
+            - name: HEADLESS
+              value: "true"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              # Chromium is memory-hungry; each context reliably uses
+              # ~150MB of RSS. 2 concurrency + node overhead → cap at 1Gi.
+              memory: "1Gi"
+              cpu: "1"

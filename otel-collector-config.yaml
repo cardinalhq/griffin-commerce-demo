@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 CardinalHQ, Inc.
+#
+# Local docker-compose collector — just receives OTLP-HTTP from the
+# browser SDK and prints spans / logs to stderr so you can see the
+# telemetry flow end-to-end without a real backend. Swap in a real
+# exporter when hooking up to lakerunner / Grafana / etc.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        # The browser sends application/x-protobuf from a different
+        # origin only if you host the frontend elsewhere; the compose
+        # setup uses same-origin nginx proxying, so CORS is optional.
+        # Kept permissive here so someone can point `npm run dev` at it.
+        cors:
+          allowed_origins:
+            - "http://localhost:5173"
+            - "http://127.0.0.1:5173"
+          allowed_headers:
+            - "*"
+          max_age: 7200
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    timeout: 2s
+    send_batch_size: 512
+
+exporters:
+  debug:
+    verbosity: normal
+    sampling_initial: 5
+    sampling_thereafter: 20
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

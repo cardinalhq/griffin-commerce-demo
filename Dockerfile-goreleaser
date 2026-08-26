@@ -25,6 +25,7 @@ COPY products.yaml /app/products.yaml
 COPY config.yaml /app/config.yaml
 COPY entrypoint.sh /app/entrypoint.sh
 COPY frontend/nginx.conf.template /app/nginx.conf.template
+COPY frontend/rum-config.js.template /app/rum-config.js.template
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 RUN chmod +x /app/bin/* /app/entrypoint.sh
