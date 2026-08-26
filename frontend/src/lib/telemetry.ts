@@ -184,9 +184,18 @@ export function initTelemetry(): void {
   })
 }
 
+// Resolve to an ABSOLUTE URL — the OTLP HTTP exporter validates its
+// url with new URL(...) which throws on same-origin paths like
+// "/v1/traces". If the config already provided an absolute URL we
+// preserve it; otherwise we anchor against the page's origin.
 function joinUrl(base: string, path: string): string {
   const trimmed = base.endsWith('/') ? base.slice(0, -1) : base
-  return `${trimmed}/${path}`
+  const combined = `${trimmed}/${path}`
+  try {
+    return new URL(combined).toString()
+  } catch {
+    return new URL(combined, window.location.origin).toString()
+  }
 }
 
 // crypto.randomUUID is only exposed in Secure Contexts (HTTPS or
