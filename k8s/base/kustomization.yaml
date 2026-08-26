@@ -7,10 +7,13 @@ resources:
   - namespace.yaml
   - frontend.yaml
   - backend-services.yaml
+  - browser-loadgen.yaml
   - ingress.yaml
 
 images:
   - name: ghcr.io/cardinalhq/griffin-commerce-demo
+    newTag: v0.1.9
+  - name: ghcr.io/cardinalhq/griffin-browser-loadgen
     newTag: v0.1.9
 
 patches:

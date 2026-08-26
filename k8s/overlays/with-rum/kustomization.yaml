@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 CardinalHQ, Inc.
+#
+# Opt-in overlay that turns on Browser RUM egress from the frontend.
+# The browser can't reach an in-cluster ClusterIP directly (no DNS, no
+# route), so nginx proxies /v1/{traces,logs,metrics} to whatever
+# OTEL_COLLECTOR_HOST resolves inside the pod.
+#
+# Compose with one of the OTLP overlays for backends (with-otlp-url or
+# with-otlp-nodelocal); the RUM overlay adds the frontend side only.
+#
+# EDIT ME below to match your cluster:
+#   - OTEL_COLLECTOR_HOST — pick one of the patterns:
+#       otel-collector.observability.svc.cluster.local   (ClusterIP Service)
+#       $(HOST_IP)                                       (per-node agent DaemonSet
+#                                                         with hostPort:4318 —
+#                                                         see with-otlp-nodelocal)
+#   - RUM_SERVICE_NAMESPACE / RUM_RESOURCE_ATTRIBUTES_JSON — mirror the
+#     backend OTEL_RESOURCE_ATTRIBUTES so RUM correlates cleanly.
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_COLLECTOR_HOST
+          value: "otel-collector.observability.svc.cluster.local"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OTEL_COLLECTOR_PORT
+          value: "4318"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: RUM_ENABLED
+          value: "true"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: RUM_SERVICE_NAME
+          value: "griffin-frontend"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: RUM_SERVICE_NAMESPACE
+          value: "griffin"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: RUM_RESOURCE_ATTRIBUTES_JSON
+          value: '{"deployment.environment":"prod"}'

@@ -11,6 +11,17 @@ services:
       - SERVICE_NAME=frontend
       - PORT=5173
       - NODE_ENV=production
+      # Browser RUM egress. nginx proxies /v1/traces and /v1/logs to
+      # this collector; the SDK ships OTLP-HTTP protobuf.
+      - OTEL_COLLECTOR_HOST=${OTEL_COLLECTOR_HOST:-otel-collector}
+      - OTEL_COLLECTOR_PORT=${OTEL_COLLECTOR_PORT:-4318}
+      - RUM_ENABLED=${RUM_ENABLED:-true}
+      - RUM_SERVICE_NAME=${RUM_SERVICE_NAME:-griffin-frontend}
+      - RUM_SERVICE_NAMESPACE=${RUM_SERVICE_NAMESPACE:-griffin}
+      - RUM_SERVICE_VERSION=${RUM_SERVICE_VERSION:-local}
+      # JSON blob; nginx envsubst pastes it verbatim into rum-config.js.
+      # Escape curlies so docker-compose doesn't try variable-substitute.
+      - RUM_RESOURCE_ATTRIBUTES_JSON={"deployment.environment":"local"}
     depends_on:
       - catalog
       - payment
@@ -18,6 +29,7 @@ services:
       - shipping
       - images
       - recommendations
+      - otel-collector
     networks:
       - griffin-network
 
@@ -141,6 +153,37 @@ services:
           memory: 256M  # Limit memory usage
         reservations:
           memory: 128M
+    restart: unless-stopped
+
+  # Local OTLP receiver for RUM. Print-to-stderr exporter so you can
+  # tail `docker-compose logs -f otel-collector` and watch browser spans
+  # flow in as browser-loadgen drives the frontend.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4318:4318" # OTLP HTTP (browser SDK)
+      - "4317:4317" # OTLP gRPC (backends could point here too)
+    networks:
+      - griffin-network
+    restart: unless-stopped
+
+  # Playwright-driven RUM traffic. See browser-loadgen/README.md.
+  browser-loadgen:
+    build: ./browser-loadgen
+    environment:
+      - TARGET_URL=http://frontend:5173
+      - CONCURRENCY=${BROWSER_LOADGEN_CONCURRENCY:-2}
+      - PAUSE_MIN_MS=${BROWSER_LOADGEN_PAUSE_MIN_MS:-1000}
+      - PAUSE_MAX_MS=${BROWSER_LOADGEN_PAUSE_MAX_MS:-5000}
+      - CHAOS_ROUTE_PROBABILITY=${BROWSER_LOADGEN_CHAOS_PROBABILITY:-0.05}
+      - HEADLESS=true
+    depends_on:
+      - frontend
+    networks:
+      - griffin-network
     restart: unless-stopped
 
 networks:

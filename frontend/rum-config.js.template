@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 CardinalHQ, Inc.
+//
+// Rendered by entrypoint.sh from environment variables at container start.
+// Absent in `npm run dev` and `serve` — the SDK becomes a no-op.
+window.__RUM_CONFIG__ = {
+  enabled: ${RUM_ENABLED},
+  endpoint: "${RUM_OTLP_PATH}",
+  serviceName: "${RUM_SERVICE_NAME}",
+  serviceNamespace: "${RUM_SERVICE_NAMESPACE}",
+  serviceVersion: "${RUM_SERVICE_VERSION}",
+  resourceAttributes: ${RUM_RESOURCE_ATTRIBUTES_JSON},
+  propagateHeaderCorsUrls: ${RUM_PROPAGATE_HEADER_CORS_URLS_JSON},
+  debug: ${RUM_DEBUG}
+};
