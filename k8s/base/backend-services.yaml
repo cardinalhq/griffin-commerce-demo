@@ -145,7 +145,7 @@ spec:
         - name: PAYMENT_SERVICE_URL
           value: "http://payment:8081"
         - name: SHIPPING_SERVICE_URL
-          value: "http://shipping:8083"
+          value: "http://shipping:8084"
         resources:
           requests:
             memory: "128Mi"

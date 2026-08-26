@@ -52,7 +52,10 @@ func Start() error {
 
 	shippingURL := os.Getenv("SHIPPING_SERVICE_URL")
 	if shippingURL == "" {
-		shippingURL = "http://shipping:8083"
+		// Shipping listens on 8084 (AGENTS.md incorrectly says 8083 — real
+		// ports are catalog:8080 payment:8081 cart:8082 images:8083
+		// shipping:8084 recommendations:8085 per k8s/base/backend-services.yaml).
+		shippingURL = "http://shipping:8084"
 	}
 	InitShippingClient(shippingURL)
 
