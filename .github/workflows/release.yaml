@@ -71,6 +71,9 @@ jobs:
     # Playwright loadgen ships as its own image because it pulls in
     # Chromium — no point bloating the goreleaser griffin image with
     # ~500MB of browser bits. Released in lockstep with the same tag.
+    # GHCR-only for now; the ECR public repository doesn't exist yet,
+    # and buildx pushes to all registries atomically — a missing ECR
+    # repo would fail the whole push. Deploys already pull from GHCR.
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -85,21 +88,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          audience: sts.amazonaws.com
-          role-to-assume: arn:aws:iam::${{ secrets.ECR_ACCOUNT_ID }}:role/${{ secrets.ECR_ROLE_NAME }}
-          aws-region: us-east-1
-          role-session-name: GitHubActions
-
-      - name: Authenticate Docker to AWS ECR (public)
-        uses: aws-actions/amazon-ecr-login@v2
-        env:
-          AWS_REGION: us-east-1
-        with:
-          registry-type: public
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -122,5 +110,3 @@ jobs:
           tags: |
             ghcr.io/cardinalhq/griffin-browser-loadgen:${{ steps.version.outputs.tag }}
             ghcr.io/cardinalhq/griffin-browser-loadgen:latest
-            public.ecr.aws/cardinalhq.io/griffin-browser-loadgen:${{ steps.version.outputs.tag }}
-            public.ecr.aws/cardinalhq.io/griffin-browser-loadgen:latest
