@@ -59,7 +59,7 @@ export function initTelemetry(): void {
     diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG)
   }
 
-  const sessionId = crypto.randomUUID()
+  const sessionId = randomUUID()
   const baseAttrs: Record<string, string | number | boolean> = {
     [ATTR_SERVICE_NAME]: cfg.serviceName,
     'session.id': sessionId,
@@ -187,6 +187,26 @@ export function initTelemetry(): void {
 function joinUrl(base: string, path: string): string {
   const trimmed = base.endsWith('/') ? base.slice(0, -1) : base
   return `${trimmed}/${path}`
+}
+
+// crypto.randomUUID is only exposed in Secure Contexts (HTTPS or
+// localhost). Playwright driving an http:// service inside the cluster
+// hits an insecure context, so we need a fallback that also uses
+// getRandomValues (still available insecurely) for entropy.
+function randomUUID(): string {
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  const bytes = new Uint8Array(16)
+  if (c && typeof c.getRandomValues === 'function') {
+    c.getRandomValues(bytes)
+  } else {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256)
+  }
+  // RFC 4122 v4: version + variant bits.
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
 function fmt(v: unknown): string {
