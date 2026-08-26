@@ -13,10 +13,15 @@ FROM mcr.microsoft.com/playwright:v1.47.0-jammy
 # The base image ships a non-root `pwuser` (UID 1000) precisely so
 # Chromium can run under runAsNonRoot=true. Our k8s base kustomization
 # stamps that pod-level securityContext onto every Deployment.
+#
+# WORKDIR creates its target dir as root:root by default — a subsequent
+# `USER pwuser` then can't `npm install` because it can't create
+# node_modules under a root-owned parent. Pre-create + chown fixes it.
+RUN mkdir -p /home/pwuser/app && chown pwuser:pwuser /home/pwuser/app
 WORKDIR /home/pwuser/app
+USER pwuser
 
 COPY --chown=pwuser:pwuser package.json ./
-USER pwuser
 # npm ci needs a lockfile; the loadgen is one dep and rarely churns, so
 # `npm install --omit=dev` on package.json is cheaper than committing one.
 RUN npm install --omit=dev --no-fund --no-audit \
