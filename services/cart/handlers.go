@@ -4,6 +4,7 @@
 package cart
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -352,9 +353,16 @@ func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Shipment creation. Same treatment as payment: non-2xx (e.g. carrier
 	// declined per baseline failure_rate) fails the checkout with 502.
+	//
+	// The card is already authorized at this point, so a shipping failure
+	// obliges us to reverse the charge. A checkout that returns 502 without
+	// either confirming the order or reversing the payment has billed the
+	// customer for an order that will never ship.
 	ship, err := CreateShipment(r.Context(), cart.ID)
 	if err != nil {
 		statusCode = http.StatusBadGateway
+		compensateFailedCheckout(r.Context(), span, cart.ID, charge.TransactionID)
+
 		correlationID := common.GetCorrelationID(r.Context())
 		appErr := common.NewAppError("SHIPPING_FAILED", err.Error())
 		slog.ErrorContext(r.Context(), "checkout shipping failed",
@@ -364,9 +372,14 @@ func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
 		common.WriteErrorResponse(r.Context(), w, appErr, statusCode, correlationID)
 		return
 	}
+	// The order is confirmed: payment authorized and shipment created. This
+	// is the other legal terminal state of the checkout protocol, and the
+	// counterpart to the "reversed" branch above.
 	span.SetAttributes(
 		attribute.String("shipping.shipment_id", ship.ShipmentID),
 		attribute.String("shipping.carrier", ship.Carrier),
+		attribute.String("checkout.terminal_state", "confirmed"),
+		attribute.String("checkout.order_id", cart.ID),
 	)
 
 	response := CheckoutResponse{
@@ -389,6 +402,37 @@ func CheckoutHandler(w http.ResponseWriter, r *http.Request) {
 	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write checkout response", "error", err)
 	}
+}
+
+// compensateFailedCheckout releases the authorized charge for a checkout
+// that failed after payment succeeded. It records the outcome on the
+// checkout span so the trace states which terminal branch the execution
+// reached: checkout.terminal_state ∈ {reversed, reversal_failed, none}.
+//
+// "none" is a protocol violation, not a service error — the customer's
+// money is held for an order that will never ship, and no individual span
+// in the trace reports a problem beyond the shipping 500 that caused it.
+func compensateFailedCheckout(ctx context.Context, span trace.Span, orderID, transactionID string) {
+	if maybeSkipReversal(ctx, orderID, transactionID) {
+		span.SetAttributes(attribute.String("checkout.terminal_state", "none"))
+		return
+	}
+
+	if _, err := ReversePayment(ctx, orderID, transactionID); err != nil {
+		span.SetAttributes(
+			attribute.String("checkout.terminal_state", "reversal_failed"),
+			attribute.String("checkout.reversal_error", err.Error()),
+		)
+		slog.ErrorContext(ctx, "checkout could not reverse payment: charge left authorized",
+			"cart_id", orderID, "payment_transaction_id", transactionID, "error", err,
+		)
+		return
+	}
+
+	span.SetAttributes(attribute.String("checkout.terminal_state", "reversed"))
+	slog.InfoContext(ctx, "checkout reversed payment after downstream failure",
+		"cart_id", orderID, "payment_transaction_id", transactionID,
+	)
 }
 
 // ClearCartHandler clears all items from a cart.

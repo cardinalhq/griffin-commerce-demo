@@ -142,6 +142,71 @@ func ProcessPayment(ctx context.Context, orderID string, amount float64, process
 	return transaction, nil
 }
 
+// ReversePayment reverses a previously successful charge. This is the
+// compensating action for a checkout that fails *after* the card was
+// authorized — without it the customer is charged for an order that never
+// ships, and every span in the trace still reports accurately.
+//
+// Reversal is idempotent: reversing an already-reversed transaction
+// succeeds without recording a second reversal, so a client retry cannot
+// manufacture a double refund.
+func ReversePayment(ctx context.Context, orderID, transactionID string) (*common.Transaction, string, error) {
+	transaction, err := GetTransaction(transactionID)
+	if err != nil {
+		return nil, "failed", err
+	}
+
+	// Guard against reversing someone else's charge if a caller crosses
+	// wires: the order and the transaction must agree.
+	if transaction.OrderID != orderID {
+		return nil, "failed", fmt.Errorf("transaction %s belongs to order %s, not %s",
+			transactionID, transaction.OrderID, orderID)
+	}
+
+	processorKey := processorKeyFor(transaction.Processor)
+
+	if transaction.Status == "reversed" {
+		faults.RecordPaymentReversal(ctx, processorKey, "already_reversed")
+		return transaction, "already_reversed", nil
+	}
+	if transaction.Status != "success" {
+		faults.RecordPaymentReversal(ctx, processorKey, "failed")
+		return nil, "failed", fmt.Errorf("cannot reverse transaction %s in status %q",
+			transactionID, transaction.Status)
+	}
+
+	transaction.Status = "reversed"
+	transaction.Message = "Charge reversed"
+	if err := transactionDB.Set(transaction.ID, transaction); err != nil {
+		faults.RecordPaymentReversal(ctx, processorKey, "failed")
+		return nil, "failed", fmt.Errorf("failed to store reversal: %w", err)
+	}
+
+	slog.InfoContext(ctx, "payment reversed",
+		"processor", processorKey,
+		"processor_name", transaction.Processor,
+		"order_id", orderID,
+		"transaction_id", transaction.ID,
+		"amount", transaction.Amount,
+		"status", "reversed",
+	)
+	faults.RecordPaymentReversal(ctx, processorKey, "reversed")
+
+	return transaction, "reversed", nil
+}
+
+// processorKeyFor maps a processor display name ("KittyCard") back to its
+// config key ("kittycard") so reversal metrics carry the same processor
+// label as charge metrics. Falls back to the name when no key matches.
+func processorKeyFor(name string) string {
+	for key, p := range processors {
+		if p.Name == name {
+			return key
+		}
+	}
+	return name
+}
+
 // GetTransaction retrieves a transaction by ID
 func GetTransaction(transactionID string) (*common.Transaction, error) {
 	data, err := transactionDB.Get(transactionID)

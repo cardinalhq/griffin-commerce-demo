@@ -109,3 +109,58 @@ func ChargePayment(ctx context.Context, orderID string, amount float64) (*charge
 	}
 	return &parsed, nil
 }
+
+type reverseRequest struct {
+	OrderID       string `json:"order_id"`
+	TransactionID string `json:"transaction_id"`
+}
+
+// ReversePayment posts to POST /api/payments/reverse to release a charge
+// that was authorized for a checkout which then failed downstream. This is
+// the compensating leg of the checkout protocol: without it the customer is
+// charged for an order that never ships.
+func ReversePayment(ctx context.Context, orderID, transactionID string) (*chargeResponse, error) {
+	if paymentClient == nil {
+		return nil, fmt.Errorf("payment client not initialized")
+	}
+
+	body, err := json.Marshal(reverseRequest{
+		OrderID:       orderID,
+		TransactionID: transactionID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal reverse request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		paymentBaseURL+"/api/payments/reverse", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build reverse request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := paymentClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("payment reverse: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.WarnContext(ctx, "Failed to close reversal response body", "error", err)
+		}
+	}()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read reverse response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("payment reverse returned %d: %s", resp.StatusCode, raw)
+	}
+
+	var parsed chargeResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, fmt.Errorf("parse reverse response: %w", err)
+	}
+	return &parsed, nil
+}

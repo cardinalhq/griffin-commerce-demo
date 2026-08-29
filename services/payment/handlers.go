@@ -19,6 +19,7 @@ import (
 func RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/health", HealthHandler).Methods("GET")
 	r.HandleFunc("/api/payments/charge", ChargeHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/payments/reverse", ReverseHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/payments/{id}", GetTransactionHandler).Methods("GET", "OPTIONS")
 }
 
@@ -127,6 +128,77 @@ func ChargeHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := common.WriteJSONResponse(w, response, statusCode); err != nil {
 		slog.ErrorContext(r.Context(), "Failed to write charge response", "error", err, "status", statusCode)
+	}
+}
+
+// ReverseRequest represents a request to reverse a previously successful charge.
+type ReverseRequest struct {
+	OrderID       string `json:"order_id"`
+	TransactionID string `json:"transaction_id"`
+}
+
+// ReverseHandler reverses a charge. Called by cart when a checkout fails
+// after payment succeeded; see services/cart/handlers.go CheckoutHandler.
+//
+// The span attributes here are the observable facts that make the
+// "authorized payment must terminate" behavioral contract decidable:
+// payment.order_id correlates to the charge, and payment.status=reversed
+// is the terminal state. Do not remove them without updating that contract.
+func ReverseHandler(w http.ResponseWriter, r *http.Request) {
+	var req ReverseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		correlationID := common.GetCorrelationID(r.Context())
+		common.WriteErrorResponse(r.Context(), w, common.ErrBadRequest, http.StatusBadRequest, correlationID)
+		return
+	}
+
+	if req.OrderID == "" || req.TransactionID == "" {
+		correlationID := common.GetCorrelationID(r.Context())
+		err := common.NewAppError("INVALID_REQUEST", "Order ID and transaction ID are required")
+		common.WriteErrorResponse(r.Context(), w, err, http.StatusBadRequest, correlationID)
+		return
+	}
+
+	span := trace.SpanFromContext(r.Context())
+	span.SetAttributes(
+		attribute.String("payment.order_id", req.OrderID),
+		attribute.String("payment.transaction_id", req.TransactionID),
+	)
+	slog.InfoContext(r.Context(), "payment reversal initiated",
+		"order_id", req.OrderID, "transaction_id", req.TransactionID,
+	)
+
+	transaction, outcome, err := ReversePayment(r.Context(), req.OrderID, req.TransactionID)
+	if err != nil {
+		span.SetAttributes(attribute.String("payment.reversal_outcome", outcome))
+		slog.ErrorContext(r.Context(), "payment reversal failed",
+			"order_id", req.OrderID, "transaction_id", req.TransactionID, "error", err,
+		)
+		correlationID := common.GetCorrelationID(r.Context())
+		appErr := common.NewAppError("REVERSAL_FAILED", err.Error())
+		common.WriteErrorResponse(r.Context(), w, appErr, http.StatusUnprocessableEntity, correlationID)
+		return
+	}
+
+	span.SetAttributes(
+		attribute.Float64("payment.amount", transaction.Amount),
+		attribute.String("payment.processor", transaction.Processor),
+		attribute.String("payment.status", transaction.Status),
+		attribute.String("payment.reversal_outcome", outcome),
+	)
+
+	response := ChargeResponse{
+		TransactionID: transaction.ID,
+		OrderID:       transaction.OrderID,
+		Amount:        transaction.Amount,
+		Status:        transaction.Status,
+		Processor:     transaction.Processor,
+		Message:       transaction.Message,
+		CreatedAt:     transaction.CreatedAt,
+	}
+
+	if err := common.WriteJSONResponse(w, response, http.StatusOK); err != nil {
+		slog.ErrorContext(r.Context(), "Failed to write reversal response", "error", err)
 	}
 }
 
