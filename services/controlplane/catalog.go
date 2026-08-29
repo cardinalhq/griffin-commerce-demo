@@ -130,6 +130,16 @@ var KnobCatalog = []faults.KnobDefinition{
 		Guidance: "Add Target to a cart, then watch a cart op fail with a generic error in the response. Open the trace, click the failed span, switch to logs tab — the structured 'cart contains tainted item' log reveals the cause.",
 	},
 	{
+		Key:         "cart.skip-reversal",
+		Service:     faults.ServiceCart,
+		Kind:        faults.KindScenario,
+		Description: "Skip the compensating payment reversal when a checkout fails after the card was authorized. The customer is billed for an order that never ships. Every span still reports accurately — payment 200, shipping 500, checkout 502 — so passing and violating checkouts are span-for-span identical; only the missing reversal separates them.",
+		Params: []faults.ParamSpec{
+			{Name: "probability", Type: "float", Min: 0, Max: 1, Default: 0.25, Description: "Fraction of failed checkouts that skip reversal"},
+		},
+		Guidance: "Only fires on checkouts that already failed downstream of payment, so the observed rate is probability × the shipping failure rate — set shipping.fail alongside it to control volume. No error-rate, latency, or status-code signal changes when this is active: griffin.payment.reversals_total stops keeping pace with failed checkouts, and that gap is the only metric-side evidence. This is the behavioral-contract demo: 'every authorized payment must reach order_confirmed or reversed'.",
+	},
+	{
 		Key:         "loadgen.flood",
 		Service:     faults.ServiceLoadgen,
 		Kind:        faults.KindFlood,

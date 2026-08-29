@@ -31,6 +31,7 @@ var (
 
 	paymentCharges        metric.Int64Counter
 	paymentChargeDuration metric.Float64Histogram
+	paymentReversals      metric.Int64Counter
 
 	shippingShipments metric.Int64Counter
 )
@@ -88,6 +89,18 @@ func ensureSiteMetrics() {
 			slog.Error("create payment charge duration histogram", "error", err)
 		}
 
+		// Deliberately a separate counter rather than a "reversed" status on
+		// charges_total: a reversal is a second event about the same charge,
+		// so folding it in would double-count every compensated checkout in
+		// any panel that sums charges_total.
+		paymentReversals, err = meter.Int64Counter(
+			"griffin.payment.reversals_total",
+			metric.WithDescription("Payment reversals partitioned by processor and outcome"),
+		)
+		if err != nil {
+			slog.Error("create payment reversals counter", "error", err)
+		}
+
 		shippingShipments, err = meter.Int64Counter(
 			"griffin.shipping.shipments_total",
 			metric.WithDescription("Shipping attempts partitioned by carrier and status"),
@@ -142,6 +155,19 @@ func RecordPaymentCharge(ctx context.Context, processor, status string, duration
 	if paymentChargeDuration != nil {
 		paymentChargeDuration.Record(ctx, durationMs, metric.WithAttributes(
 			attribute.String("processor", processor),
+		))
+	}
+}
+
+// RecordPaymentReversal records one attempt to reverse a charge.
+// outcome ∈ {reversed, already_reversed, failed}. processor uses the same
+// key as RecordPaymentCharge so the two counters join on the label.
+func RecordPaymentReversal(ctx context.Context, processor, outcome string) {
+	ensureSiteMetrics()
+	if paymentReversals != nil {
+		paymentReversals.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("processor", processor),
+			attribute.String("outcome", outcome),
 		))
 	}
 }

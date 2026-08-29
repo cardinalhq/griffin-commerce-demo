@@ -4,6 +4,7 @@
 package cart
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -84,5 +85,29 @@ func maybeFailPoisonProduct(w http.ResponseWriter, r *http.Request, cartID, oper
 	common.WriteErrorResponse(r.Context(), w,
 		common.NewAppError("INTERNAL_ERROR", "The service encountered an unexpected error"),
 		http.StatusInternalServerError, correlationID)
+	return true
+}
+
+// maybeSkipReversal checks the cart.skip-reversal knob. When it fires, the
+// compensating ReversePayment call is skipped and the checkout leaves an
+// authorized charge stranded — the customer is billed for an order that
+// never ships.
+//
+// This is the demo's behavioral-contract regression. Every span in the
+// resulting trace still reports accurately: payment 200, shipping 500,
+// checkout 502. The passing and violating executions are span-for-span
+// identical; only the absence of the reversal event separates them, which
+// is precisely what a behavioral contract detects and a span query cannot.
+func maybeSkipReversal(ctx context.Context, orderID, transactionID string) bool {
+	k, fired := faults.Probe(faultsClient, "cart.skip-reversal")
+	if !fired {
+		return false
+	}
+	slog.ErrorContext(ctx, "checkout skipped payment reversal: charge left authorized",
+		"griffin.fault", k.Key,
+		"cart_id", orderID,
+		"payment_transaction_id", transactionID,
+	)
+	faults.Record(ctx, k, 0)
 	return true
 }
