@@ -12,23 +12,39 @@ package orderevents
 
 import (
 	"math/rand"
+	"os"
+	"strconv"
 	"time"
 )
 
-const (
-	// cyclePeriod is how often the lag incident recurs. Deterministic and
-	// keyed off wall-clock time (not an activation timestamp) so every
-	// replica/restart stays in phase with no coordination.
-	cyclePeriod = 3 * time.Hour
-
-	rampUp   = 2 * time.Minute
-	plateau  = 15 * time.Minute
-	rampDown = 5 * time.Minute
+// cyclePeriod is how often the lag incident recurs. Deterministic and keyed
+// off wall-clock time (not an activation timestamp) so every
+// replica/restart stays in phase with no coordination. Each stage is
+// independently overridable via env var (seconds) so a local run can watch
+// a full spike-and-recover in under a minute instead of waiting 3 hours —
+// production leaves these unset and gets the real cadence.
+var (
+	cyclePeriod = envSecondsOr("ORDER_EVENTS_CYCLE_SECONDS", 3*time.Hour)
+	rampUp      = envSecondsOr("ORDER_EVENTS_RAMP_UP_SECONDS", 2*time.Minute)
+	plateau     = envSecondsOr("ORDER_EVENTS_PLATEAU_SECONDS", 15*time.Minute)
+	rampDown    = envSecondsOr("ORDER_EVENTS_RAMP_DOWN_SECONDS", 5*time.Minute)
 
 	// incidentDuration is the total window, starting at the top of each
 	// cycle, during which the lag is elevated above baseline.
 	incidentDuration = rampUp + plateau + rampDown
 )
+
+func envSecondsOr(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	secs, err := strconv.Atoi(v)
+	if err != nil || secs <= 0 {
+		return def
+	}
+	return time.Duration(secs) * time.Second
+}
 
 // Range is a [Lo, Hi] sample interval.
 type Range struct {
