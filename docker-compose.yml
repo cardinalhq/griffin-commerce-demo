@@ -121,6 +121,19 @@ services:
       - griffin-network
     restart: unless-stopped
 
+  # Self-triggering order.created consumer-lag simulator for the
+  # logs-to-metrics correlation demo. Runs on a fixed 3-hour wall-clock
+  # cycle — no CONTROLPLANE_URL, no admin knob.
+  order-events-analyzer:
+    image: public.ecr.aws/cardinalhq.io/griffin-commerce-demo:latest
+    build: .
+    environment:
+      - SERVICE_NAME=order-events-analyzer
+      - PORT=8087
+    networks:
+      - griffin-network
+    restart: unless-stopped
+
   # Load generator - Locust for simulating user traffic
   loadgen:
     build: ./loadgen

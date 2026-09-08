@@ -76,9 +76,15 @@ case "$SERVICE_NAME" in
     # investigate. No HTTP server — outbound client only.
     /app/bin/griffin loadgen
     ;;
+  order-events-analyzer)
+    # Self-triggering order.created consumer-lag simulator for the
+    # logs-to-metrics correlation demo. No admin/controlplane knob —
+    # the lag spike runs on a fixed 3-hour wall-clock cycle.
+    PORT=${PORT:-8087} /app/bin/griffin order-events-analyzer
+    ;;
   *)
     echo "Unknown service: $SERVICE_NAME"
-    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane, dbaas, nvcf"
+    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane, dbaas, nvcf, order-events-analyzer"
     exit 1
     ;;
 esac
