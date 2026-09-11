@@ -17,6 +17,7 @@ rather than one long-lived one.
 | `JOURNEY_TIMEOUT_MS`       | `60000`                  | Hard cap on a single journey; on timeout we bail cleanly. |
 | `NAV_TIMEOUT_MS`           | `30000`                  | Per-navigation timeout.                                   |
 | `CHAOS_ROUTE_PROBABILITY`  | `0.05`                   | Chance a journey visits `/chaos` (admin UI).              |
+| `CLIENT_ERROR_PROBABILITY` | `0.12`                   | Chance a journey triggers a real client-side error (uncaught JS exception + failed fetch) so the RUM Errors panel has data. |
 | `HEADLESS`                 | `true`                   | Set `false` to see the browser (docker-compose only).     |
 | `USER_AGENT_SUFFIX`        | `GriffinBrowserLoadgen`  | Appended to the UA so RUM sessions are self-identifying.  |
 

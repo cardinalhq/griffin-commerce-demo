@@ -20,6 +20,7 @@ const NAV_TIMEOUT_MS = clampInt(process.env.NAV_TIMEOUT_MS, 5_000, 120_000, 30_0
 const HEADLESS = (process.env.HEADLESS ?? 'true').toLowerCase() !== 'false'
 const USER_AGENT_SUFFIX = process.env.USER_AGENT_SUFFIX ?? 'GriffinBrowserLoadgen'
 const CHAOS_ROUTE_PROBABILITY = clampFloat(process.env.CHAOS_ROUTE_PROBABILITY, 0, 1, 0.05)
+const CLIENT_ERROR_PROBABILITY = clampFloat(process.env.CLIENT_ERROR_PROBABILITY, 0, 1, 0.12)
 
 function clampInt(raw, min, max, fallback) {
   const n = raw == null ? NaN : Number.parseInt(raw, 10)
@@ -82,6 +83,29 @@ async function visitChaos(page) {
   await page.goto(TARGET_URL + '/chaos', { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => {})
   await sleep(jitter())
 }
+// Deliberately produce a real client-side error so the RUM "Errors" panel
+// has something to show: telemetry.ts's window.onerror /
+// unhandledrejection / console.error hooks and the fetch auto-instrumentation
+// are real and already wired up, they just never fire on the happy path.
+async function triggerClientError(page) {
+  // Thrown from a macrotask (setTimeout) so it becomes a genuine uncaught
+  // exception the page's window.onerror handler observes, rather than
+  // rejecting this evaluate() call itself.
+  await page
+    .evaluate(() => {
+      setTimeout(() => {
+        throw new Error('loadgen: synthetic client error')
+      }, 0)
+    })
+    .catch(() => {})
+  await sleep(200 + Math.random() * 300)
+  // A fetch against a route that doesn't exist yields a real 404 span with
+  // http_status_code set, picked up by the RUM fetch auto-instrumentation.
+  await page
+    .evaluate(() => fetch('/api/loadgen-synthetic-404').catch(() => {}))
+    .catch(() => {})
+  await sleep(jitter())
+}
 
 async function runJourney(browser, workerId, iteration) {
   const context = await browser.newContext({
@@ -102,6 +126,7 @@ async function runJourney(browser, workerId, iteration) {
         await openRandomProduct(page)
         await addSomethingToCart(page)
         if (Math.random() < CHAOS_ROUTE_PROBABILITY) await visitChaos(page)
+        if (Math.random() < CLIENT_ERROR_PROBABILITY) await triggerClientError(page)
         // Sit on the page long enough for the SDK to batch-flush.
         await sleep(6_000 + Math.random() * 4_000)
       })(),
