@@ -13,7 +13,7 @@ import { ZoneContextManager } from '@opentelemetry/context-zone'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { registerInstrumentations } from '@opentelemetry/instrumentation'
-import { Resource } from '@opentelemetry/resources'
+import { resourceFromAttributes } from '@opentelemetry/resources'
 import { BatchLogRecordProcessor, LoggerProvider } from '@opentelemetry/sdk-logs'
 import { BatchSpanProcessor, WebTracerProvider } from '@opentelemetry/sdk-trace-web'
 import {
@@ -73,7 +73,7 @@ export function initTelemetry(): void {
     baseAttrs[k] = v
   }
 
-  const resource = new Resource(baseAttrs)
+  const resource = resourceFromAttributes(baseAttrs)
 
   const traceUrl = joinUrl(cfg.endpoint, 'traces')
   const logsUrl = joinUrl(cfg.endpoint, 'logs')
@@ -109,13 +109,15 @@ export function initTelemetry(): void {
     }),
   })
 
-  const loggerProvider = new LoggerProvider({ resource })
-  loggerProvider.addLogRecordProcessor(
-    new BatchLogRecordProcessor(new OTLPLogExporter({ url: logsUrl }), {
-      maxExportBatchSize: 20,
-      scheduledDelayMillis: 5_000,
-    }),
-  )
+  const loggerProvider = new LoggerProvider({
+    resource,
+    processors: [
+      new BatchLogRecordProcessor(new OTLPLogExporter({ url: logsUrl }), {
+        maxExportBatchSize: 20,
+        scheduledDelayMillis: 5_000,
+      }),
+    ],
+  })
   logs.setGlobalLoggerProvider(loggerProvider)
   const logger = logs.getLogger('griffin.frontend')
 
