@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Standalone overlay for the Adani Khavda solar farm telemetry simulator
+# running in the lakerunner aws-prod-us-east-2-global cluster. Does NOT
+# depend on k8s/base — base bundles the commerce services (catalog,
+# cart, frontend, etc.) which are unrelated to the Adani demo. We ship
+# only the solar Deployment, a ClusterIP Service for the fault HTTP
+# endpoint, and a Namespace.
+namespace: adani-demo
+
+resources:
+  - namespace.yaml
+  - solar-deployment.yaml
+  - solar-service.yaml
+
+images:
+  - name: ghcr.io/cardinalhq/griffin-commerce-demo
+    # First release with services/solar on main and the node:24.22.1
+    # base (griffin-commerce-demo#61).
+    newTag: v0.7.3

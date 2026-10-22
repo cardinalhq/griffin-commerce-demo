@@ -70,6 +70,11 @@ case "$SERVICE_NAME" in
     # See docs/specs/nvcf.md.
     /app/bin/griffin nvcf
     ;;
+  solar)
+    # Adani Khavda solar farm simulator. OTLP metric+log emitter with a
+    # local :9999 fault HTTP server reachable via kubectl port-forward.
+    /app/bin/griffin solar
+    ;;
   loadgen)
     # Continuous low-rate traffic against the cart service so the
     # customer-persona side of the Airtel demo has live traces to
@@ -84,7 +89,7 @@ case "$SERVICE_NAME" in
     ;;
   *)
     echo "Unknown service: $SERVICE_NAME"
-    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane, dbaas, nvcf, order-events-analyzer"
+    echo "Valid services: frontend, catalog, payment, cart, images, shipping, recommendations, controlplane, dbaas, nvcf, solar, order-events-analyzer"
     exit 1
     ;;
 esac
