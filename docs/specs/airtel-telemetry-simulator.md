@@ -1,7 +1,7 @@
 # Airtel Telemetry Simulator
 
 **Service:** `services/dbaas` (cobra subcommand `griffin dbaas`)
-**Deploy:** `k8s/overlays/airtel-prod/`
+**Deploy:** retired 2026-10-22 (overlay removed; `airtel-demo` namespace deleted from prod). See git history for `k8s/overlays/airtel-prod/`.
 **Source spec:** Airtel demo spec v0.2 (Postgres on VMware shared VMs)
 
 ## Purpose
