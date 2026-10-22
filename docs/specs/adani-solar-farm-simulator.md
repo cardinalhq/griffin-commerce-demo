@@ -1,7 +1,7 @@
 # Adani Solar Farm Simulator
 
 **Service:** `services/solar` (cobra subcommand `griffin solar`)
-**Deploy:** `k8s/overlays/adani-prod/`
+**Deploy:** retired 2026-10-22 (overlay removed; `adani-demo` namespace deleted from prod). See git history for `k8s/overlays/adani-prod/`.
 **Source plant:** Adani Khavda Renewable Energy Park, Kutch, Gujarat
 
 ## Purpose
