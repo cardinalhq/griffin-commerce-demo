@@ -2,7 +2,7 @@
 # Copyright (C) 2026 CardinalHQ, Inc.
 
 # Multi-stage build for Node.js frontend
-FROM node:24-alpine AS builder
+FROM node:24.22.1-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -21,7 +21,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Production stage
-FROM node:24-alpine
+FROM node:24.22.1-alpine
 
 # Install serve for production
 RUN npm install -g serve
