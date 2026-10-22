@@ -2,7 +2,7 @@
 # Copyright (C) 2026 CardinalHQ, Inc.
 
 # Stage 1: build the Svelte frontend
-FROM node:24-alpine AS frontend-builder
+FROM node:24.22.1-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -10,7 +10,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: runtime image bundling the Go binary, frontend dist, and config
-FROM node:24-alpine
+FROM node:24.22.1-alpine
 ARG TARGETPLATFORM
 
 WORKDIR /app

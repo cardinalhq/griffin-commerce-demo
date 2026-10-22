@@ -1,36 +1,44 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 CardinalHQ, Inc.
 #
-# RUM traffic generator. Wraps a headless Chromium (from the Playwright
-# base image, which ships browsers preinstalled at /ms-playwright) around
-# a tiny Node.js loop that navigates the Griffin frontend continuously.
+# RUM traffic generator. Wraps a headless Chromium (installed by
+# Playwright at build time into /ms-playwright) around a tiny Node.js
+# loop that navigates the Griffin frontend continuously.
 # The point of shipping *real browser* traffic — vs. Locust hitting REST
 # endpoints — is that OTel-web only fires when a real browser loads the
 # SPA and executes its script.
+#
+# Based on the official Node image rather than mcr.microsoft.com/playwright
+# so the Node version is pinned here and picks up security releases
+# without waiting for a new Playwright image.
 
-FROM mcr.microsoft.com/playwright:v1.47.0-jammy
+FROM node:24.22.1-bookworm-slim
 
-# The base image ships a non-root `pwuser` (UID 1000) precisely so
-# Chromium can run under runAsNonRoot=true. Our k8s base kustomization
-# stamps that pod-level securityContext onto every Deployment.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# The base image ships a non-root `node` user (UID 1000) so Chromium can
+# run under runAsNonRoot=true. Our k8s base kustomization stamps that
+# pod-level securityContext onto every Deployment.
 #
 # WORKDIR creates its target dir as root:root by default — a subsequent
-# `USER 1000:1000` then can't `npm install` because it can't create
+# `USER 1000:1000` then can't `npm ci` because it can't create
 # node_modules under a root-owned parent. Pre-create + chown fixes it.
-RUN mkdir -p /home/pwuser/app && chown pwuser:pwuser /home/pwuser/app
-WORKDIR /home/pwuser/app
+RUN mkdir -p /home/node/app && chown node:node /home/node/app
+WORKDIR /home/node/app
 USER 1000:1000
 
-COPY --chown=pwuser:pwuser package.json ./
-# npm ci needs a lockfile; the loadgen is one dep and rarely churns, so
-# `npm install --omit=dev` on package.json is cheaper than committing one.
-RUN npm install --omit=dev --no-fund --no-audit \
+COPY --chown=node:node package.json package-lock.json ./
+RUN npm ci --omit=dev --no-fund --no-audit \
   && npm cache clean --force
 
-COPY --chown=pwuser:pwuser run.js ./
+# Chromium plus its system libraries, at the build the locked playwright
+# version expects. --with-deps uses apt, so this step runs as root.
+USER root
+RUN ./node_modules/.bin/playwright install --with-deps chromium \
+  && rm -rf /var/lib/apt/lists/*
+USER 1000:1000
 
-# Match the base image's default browser install location.
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY --chown=node:node run.js ./
 
 # Sensible demo defaults; overridden per-environment via compose / k8s env.
 ENV TARGET_URL=http://frontend:5173
